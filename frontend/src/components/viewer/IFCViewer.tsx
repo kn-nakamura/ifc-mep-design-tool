@@ -17,9 +17,10 @@ export const IFCViewer: React.FC = () => {
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
 
-  const spaces = useIFCStore((state) => state.spaces);
-  const selectedSpaceId = useIFCStore((state) => state.selectedSpaceId);
-  const setSelectedSpaceId = useIFCStore((state) => state.setSelectedSpaceId);
+  const filteredSpaces = useIFCStore((state) => state.filteredSpaces());
+  const selectedSpaceIds = useIFCStore((state) => state.selectedSpaceIds);
+  const toggleSelectedSpaceId = useIFCStore((state) => state.toggleSelectedSpaceId);
+  const setSelectedSpaceIds = useIFCStore((state) => state.setSelectedSpaceIds);
   const ventilationResults = useCalculationStore((state) => state.ventilationResults);
 
   // シーンの初期化
@@ -96,9 +97,18 @@ export const IFCViewer: React.FC = () => {
         if (intersects.length > 0) {
           const clickedMesh = intersects[0].object as THREE.Mesh;
           const spaceId = clickedMesh.userData.spaceId;
-          setSelectedSpaceId(spaceId);
+
+          // Ctrl/Cmdキーが押されている場合は複数選択
+          if (event.ctrlKey || event.metaKey) {
+            toggleSelectedSpaceId(spaceId);
+          } else {
+            setSelectedSpaceIds([spaceId]);
+          }
         } else {
-          setSelectedSpaceId(null);
+          // 空白をクリックした場合は選択解除
+          if (!event.ctrlKey && !event.metaKey) {
+            setSelectedSpaceIds([]);
+          }
         }
       };
 
@@ -131,19 +141,30 @@ export const IFCViewer: React.FC = () => {
       console.error('IFCViewer: 初期化エラー', error);
       setInitError(`3Dビューアの初期化に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`);
     }
-  }, [setSelectedSpaceId]);
+  }, [toggleSelectedSpaceId, setSelectedSpaceIds]);
 
   // スペースメッシュの作成
   useEffect(() => {
-    console.log('IFCViewer: spacesの更新検知', { spacesCount: spaces.length, sceneReady: !!sceneRef.current });
+    console.log('IFCViewer: filteredSpacesの更新検知', { spacesCount: filteredSpaces.length, sceneReady: !!sceneRef.current });
 
     if (!sceneRef.current) {
       console.log('IFCViewer: シーンが未初期化');
       return;
     }
 
-    if (spaces.length === 0) {
-      console.log('IFCViewer: スペースが空');
+    if (filteredSpaces.length === 0) {
+      console.log('IFCViewer: フィルタリング後のスペースが空');
+      // 既存のメッシュを削除
+      spaceMeshesRef.current.forEach((mesh) => {
+        sceneRef.current?.remove(mesh);
+        mesh.geometry.dispose();
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach(mat => mat.dispose());
+        } else {
+          mesh.material.dispose();
+        }
+      });
+      spaceMeshesRef.current = [];
       return;
     }
 
@@ -159,67 +180,117 @@ export const IFCViewer: React.FC = () => {
     });
     spaceMeshesRef.current = [];
 
-    const fallbackSize = 5;
     const boundsMin = new THREE.Vector3(Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
     const boundsMax = new THREE.Vector3(Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY);
 
-    const updateBounds = (position: THREE.Vector3, size: THREE.Vector3) => {
-      const halfSize = size.clone().multiplyScalar(0.5);
-      const min = position.clone().sub(halfSize);
-      const max = position.clone().add(halfSize);
-      boundsMin.min(min);
-      boundsMax.max(max);
+    const updateBounds = (vertices: THREE.Vector3[]) => {
+      vertices.forEach(v => {
+        boundsMin.min(v);
+        boundsMax.max(v);
+      });
     };
 
-    // スペースごとにメッシュを作成（位置・形状を保持）
-    spaces.forEach((space) => {
-      const geometryData = space.geometry?.boundingBox;
-      const hasBoundingBox = Boolean(geometryData?.min && geometryData?.max);
+    // スペースごとにメッシュを作成（実際の形状を使用）
+    filteredSpaces.forEach((space) => {
+      let mesh: THREE.Mesh;
 
-      const bboxWidth = hasBoundingBox ? geometryData!.max.x - geometryData!.min.x : null;
-      const bboxDepth = hasBoundingBox ? geometryData!.max.y - geometryData!.min.y : null;
-      const bboxHeight = hasBoundingBox ? geometryData!.max.z - geometryData!.min.z : null;
+      // geometry.verticesが存在する場合は実際の形状を使用
+      if (space.geometry?.vertices && space.geometry.vertices.length >= 3) {
+        const vertices = space.geometry.vertices.map(v =>
+          new THREE.Vector3(v[0], v[2], v[1]) // IFC座標系からThree.js座標系に変換 (x, z, y)
+        );
 
-      const width = bboxWidth && bboxWidth > 0 ? bboxWidth : Math.sqrt(space.area || fallbackSize * fallbackSize) || fallbackSize;
-      const depth = bboxDepth && bboxDepth > 0 ? bboxDepth : Math.sqrt(space.area || fallbackSize * fallbackSize) || fallbackSize;
-      const height = bboxHeight && bboxHeight > 0 ? bboxHeight : space.height || 3;
+        // ShapeGeometryまたはExtrudeGeometryを使用して2D形状を押し出し
+        const height = space.height || 3;
 
-      const geometry = new THREE.BoxGeometry(width, height, depth);
-      const material = new THREE.MeshPhongMaterial({
-        color: 0x88ccff,
-        transparent: true,
-        opacity: 0.7,
-        side: THREE.DoubleSide,
-      });
+        // 2D形状を作成（XZ平面）
+        const shape = new THREE.Shape();
+        if (vertices.length > 0) {
+          shape.moveTo(vertices[0].x, vertices[0].z);
+          for (let i = 1; i < vertices.length; i++) {
+            shape.lineTo(vertices[i].x, vertices[i].z);
+          }
+          shape.closePath();
+        }
 
-      const mesh = new THREE.Mesh(geometry, material);
+        // 押し出し設定
+        const extrudeSettings = {
+          depth: height,
+          bevelEnabled: false,
+        };
 
-      const location = space.location;
-      const centerX = location?.x ?? 0;
-      const centerY = location?.z ?? 0;
-      const centerZ = location?.y ?? 0;
+        const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+        const material = new THREE.MeshPhongMaterial({
+          color: 0x88ccff,
+          transparent: true,
+          opacity: 0.7,
+          side: THREE.DoubleSide,
+        });
 
-      if (hasBoundingBox) {
-        const bboxCenterX = (geometryData!.min.x + geometryData!.max.x) / 2;
-        const bboxCenterY = (geometryData!.min.z + geometryData!.max.z) / 2;
-        const bboxCenterZ = (geometryData!.min.y + geometryData!.max.y) / 2;
-        mesh.position.set(bboxCenterX, bboxCenterY, bboxCenterZ);
+        mesh = new THREE.Mesh(geometry, material);
+
+        // 位置を設定（階の高さを考慮）
+        const baseY = space.location?.z ?? 0;
+        mesh.position.set(0, baseY, 0);
+
+        // 回転を調整（ExtrudeGeometryはZ軸に沿って押し出されるため、Y軸に向ける）
+        mesh.rotation.x = -Math.PI / 2;
+
+        updateBounds(vertices);
       } else {
-        mesh.position.set(centerX, centerY + height / 2, centerZ);
+        // バウンディングボックスまたは面積から形状を推定
+        const geometryData = space.geometry?.boundingBox;
+        const hasBoundingBox = Boolean(geometryData?.min && geometryData?.max);
+
+        const fallbackSize = Math.sqrt(space.area || 25) || 5;
+        const bboxWidth = hasBoundingBox ? geometryData!.max.x - geometryData!.min.x : null;
+        const bboxDepth = hasBoundingBox ? geometryData!.max.y - geometryData!.min.y : null;
+        const bboxHeight = hasBoundingBox ? geometryData!.max.z - geometryData!.min.z : null;
+
+        const width = bboxWidth && bboxWidth > 0 ? bboxWidth : fallbackSize;
+        const depth = bboxDepth && bboxDepth > 0 ? bboxDepth : fallbackSize;
+        const height = bboxHeight && bboxHeight > 0 ? bboxHeight : space.height || 3;
+
+        const geometry = new THREE.BoxGeometry(width, height, depth);
+        const material = new THREE.MeshPhongMaterial({
+          color: 0x88ccff,
+          transparent: true,
+          opacity: 0.7,
+          side: THREE.DoubleSide,
+        });
+
+        mesh = new THREE.Mesh(geometry, material);
+
+        if (hasBoundingBox) {
+          const bboxCenterX = (geometryData!.min.x + geometryData!.max.x) / 2;
+          const bboxCenterY = (geometryData!.min.z + geometryData!.max.z) / 2;
+          const bboxCenterZ = (geometryData!.min.y + geometryData!.max.y) / 2;
+          mesh.position.set(bboxCenterX, bboxCenterY, bboxCenterZ);
+        } else {
+          const location = space.location;
+          const centerX = location?.x ?? 0;
+          const centerY = location?.z ?? 0;
+          const centerZ = location?.y ?? 0;
+          mesh.position.set(centerX, centerY + height / 2, centerZ);
+        }
+
+        const pos = mesh.position;
+        updateBounds([
+          new THREE.Vector3(pos.x - width/2, pos.y - height/2, pos.z - depth/2),
+          new THREE.Vector3(pos.x + width/2, pos.y + height/2, pos.z + depth/2),
+        ]);
       }
 
       mesh.userData = { spaceId: space.id };
 
       sceneRef.current?.add(mesh);
       spaceMeshesRef.current.push(mesh);
-
-      updateBounds(mesh.position, new THREE.Vector3(width, height, depth));
     });
 
     console.log('IFCViewer: メッシュ作成完了', { count: spaceMeshesRef.current.length });
 
     // カメラ位置を調整
-    if (cameraRef.current && controlsRef.current) {
+    if (cameraRef.current && controlsRef.current && spaceMeshesRef.current.length > 0) {
       const center = boundsMin.clone().add(boundsMax).multiplyScalar(0.5);
       const size = boundsMax.clone().sub(boundsMin);
       const maxDimension = Math.max(size.x, size.y, size.z, 10);
@@ -228,18 +299,18 @@ export const IFCViewer: React.FC = () => {
       cameraRef.current.position.set(center.x + distance, center.y + distance, center.z + distance);
       controlsRef.current.target.copy(center);
     }
-  }, [spaces]);
+  }, [filteredSpaces]);
 
   // 選択状態とハイライトの更新
   useEffect(() => {
     spaceMeshesRef.current.forEach((mesh) => {
       const spaceId = mesh.userData.spaceId;
       const material = mesh.material as THREE.MeshPhongMaterial;
-      
+
       // 計算結果に基づく色設定
       const result = ventilationResults[spaceId];
       let color = 0x88ccff; // デフォルト色
-      
+
       if (result) {
         if (result.complianceStatus === 'OK') {
           color = 0x2ecc71; // 緑
@@ -249,9 +320,9 @@ export const IFCViewer: React.FC = () => {
           color = 0xf39c12; // オレンジ
         }
       }
-      
-      // 選択状態
-      if (spaceId === selectedSpaceId) {
+
+      // 選択状態（複数選択対応）
+      if (selectedSpaceIds.includes(spaceId)) {
         material.color.set(0xffff00); // 黄色
         material.opacity = 0.9;
       } else {
@@ -259,7 +330,7 @@ export const IFCViewer: React.FC = () => {
         material.opacity = 0.7;
       }
     });
-  }, [selectedSpaceId, ventilationResults]);
+  }, [selectedSpaceIds, ventilationResults]);
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -322,7 +393,7 @@ export const IFCViewer: React.FC = () => {
       )}
 
       {/* スペースが空の場合の警告 */}
-      {isInitialized && !initError && spaces.length === 0 && (
+      {isInitialized && !initError && filteredSpaces.length === 0 && (
         <div
           style={{
             position: 'absolute',
@@ -343,8 +414,8 @@ export const IFCViewer: React.FC = () => {
             スペースが見つかりません
           </div>
           <div style={{ fontSize: '14px' }}>
-            IFCファイル内にIfcSpaceエンティティが含まれていないか、解析に失敗しました。
-            別のIFCファイルをお試しください。
+            フィルタリング条件に一致するスペースがありません。
+            フィルタ設定を確認してください。
           </div>
         </div>
       )}
@@ -371,7 +442,7 @@ export const IFCViewer: React.FC = () => {
       </div>
 
       {/* スペース数表示 */}
-      {spaces.length > 0 && (
+      {filteredSpaces.length > 0 && (
         <div
           style={{
             position: 'absolute',
@@ -384,7 +455,8 @@ export const IFCViewer: React.FC = () => {
             fontSize: '14px',
           }}
         >
-          {spaces.length} 個のスペースを表示中
+          {filteredSpaces.length} 個のスペースを表示中
+          {selectedSpaceIds.length > 0 && ` (${selectedSpaceIds.length}個選択中)`}
         </div>
       )}
 

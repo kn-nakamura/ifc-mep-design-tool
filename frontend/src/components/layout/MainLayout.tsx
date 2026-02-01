@@ -9,13 +9,29 @@ export const MainLayout: React.FC = () => {
   const modelId = useIFCStore((state) => state.modelId);
   const showViewer = useUIStore((state) => state.showViewer);
   const sidebarWidth = useUIStore((state) => state.sidebarWidth);
+  const isSidebarOpen = useUIStore((state) => state.isSidebarOpen);
+  const toggleSidebar = useUIStore((state) => state.toggleSidebar);
 
   return (
     <div className="app-shell">
       <Header />
       <div className="app-body">
-        <Sidebar width={sidebarWidth} />
+        <div className={`app-sidebar-container ${isSidebarOpen ? 'is-open' : ''}`}>
+          <Sidebar width={sidebarWidth} />
+        </div>
+
         <div className="app-viewer">
+          {/* モバイル用サイドバートグルボタン */}
+          {modelId && (
+            <button
+              className="app-mobile-sidebar-toggle"
+              onClick={toggleSidebar}
+              aria-label={isSidebarOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
+            >
+              {isSidebarOpen ? '✕' : '☰'}
+            </button>
+          )}
+
           {showViewer && modelId ? (
             <IFCViewer />
           ) : (
@@ -34,6 +50,14 @@ export const MainLayout: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* モバイル用オーバーレイ */}
+        {isSidebarOpen && modelId && (
+          <div
+            className="app-mobile-overlay"
+            onClick={toggleSidebar}
+          />
+        )}
       </div>
     </div>
   );

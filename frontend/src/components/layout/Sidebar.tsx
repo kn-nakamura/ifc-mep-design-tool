@@ -5,6 +5,7 @@ import { ifcService } from '@/services/ifcService';
 import { SpaceListPanel } from '../panels/SpaceListPanel';
 import { PropertyPanel } from '../panels/PropertyPanel';
 import { CalculationPanel } from '../panels/CalculationPanel';
+import { FilterPanel } from '../panels/FilterPanel';
 
 interface SidebarProps {
   width: number;
@@ -87,6 +88,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ width }) => {
             onClick={() => setActivePanel('spaces')}
           >
             スペース
+          </TabButton>
+          <TabButton
+            active={activePanel === 'filter'}
+            onClick={() => setActivePanel('filter')}
+          >
+            フィルター
           </TabButton>
           <TabButton
             active={activePanel === 'properties'}
@@ -190,6 +197,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ width }) => {
             </button>
 
             {activePanel === 'spaces' && <SpaceListPanel />}
+            {activePanel === 'filter' && <FilterPanel />}
             {activePanel === 'properties' && <PropertyPanel />}
             {activePanel === 'calculation' && <CalculationPanel />}
           </>
