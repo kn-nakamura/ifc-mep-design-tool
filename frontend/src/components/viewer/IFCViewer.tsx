@@ -190,20 +190,110 @@ export const IFCViewer: React.FC = () => {
       });
     };
 
+    const updateBoundsFromBox = (box: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }) => {
+      updateBounds([
+        new THREE.Vector3(box.min.x, box.min.z, box.min.y),
+        new THREE.Vector3(box.max.x, box.max.z, box.max.y),
+      ]);
+    };
+
+    const createBoxMesh = (space: typeof filteredSpaces[number]) => {
+      const geometryData = space.geometry?.boundingBox;
+      const hasBoundingBox = Boolean(geometryData?.min && geometryData?.max);
+
+      const fallbackSize = Math.sqrt(space.area || 25) || 5;
+      const bboxWidth = hasBoundingBox ? geometryData!.max.x - geometryData!.min.x : null;
+      const bboxDepth = hasBoundingBox ? geometryData!.max.y - geometryData!.min.y : null;
+      const bboxHeight = hasBoundingBox ? geometryData!.max.z - geometryData!.min.z : null;
+
+      const width = bboxWidth && bboxWidth > 0 ? bboxWidth : fallbackSize;
+      const depth = bboxDepth && bboxDepth > 0 ? bboxDepth : fallbackSize;
+      const height = bboxHeight && bboxHeight > 0 ? bboxHeight : space.height || 3;
+
+      const geometry = new THREE.BoxGeometry(width, height, depth);
+      const material = new THREE.MeshPhongMaterial({
+        color: 0x88ccff,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide,
+      });
+
+      const mesh = new THREE.Mesh(geometry, material);
+
+      if (hasBoundingBox) {
+        const bboxCenterX = (geometryData!.min.x + geometryData!.max.x) / 2;
+        const bboxCenterY = (geometryData!.min.z + geometryData!.max.z) / 2;
+        const bboxCenterZ = (geometryData!.min.y + geometryData!.max.y) / 2;
+        mesh.position.set(bboxCenterX, bboxCenterY, bboxCenterZ);
+        updateBoundsFromBox(geometryData!);
+      } else {
+        const location = space.location;
+        const centerX = location?.x ?? 0;
+        const centerY = location?.z ?? 0;
+        const centerZ = location?.y ?? 0;
+        mesh.position.set(centerX, centerY + height / 2, centerZ);
+        const pos = mesh.position;
+        updateBounds([
+          new THREE.Vector3(pos.x - width / 2, pos.y - height / 2, pos.z - depth / 2),
+          new THREE.Vector3(pos.x + width / 2, pos.y + height / 2, pos.z + depth / 2),
+        ]);
+      }
+
+      return mesh;
+    };
+
+    const isPlanarFootprint = (vertices: number[][]) => {
+      if (vertices.length < 3) return false;
+      let minZ = Number.POSITIVE_INFINITY;
+      let maxZ = Number.NEGATIVE_INFINITY;
+      vertices.forEach((v) => {
+        minZ = Math.min(minZ, v[2]);
+        maxZ = Math.max(maxZ, v[2]);
+      });
+      return Math.abs(maxZ - minZ) < 0.05;
+    };
+
     // スペースごとにメッシュを作成（実際の形状を使用）
     filteredSpaces.forEach((space) => {
       let mesh: THREE.Mesh;
 
-      // geometry.verticesが存在する場合は実際の形状を使用
-      if (space.geometry?.vertices && space.geometry.vertices.length >= 3) {
-        const vertices = space.geometry.vertices.map(v =>
+      const geometryVertices = space.geometry?.vertices;
+      const geometryIndices = space.geometry?.indices;
+
+      if (geometryVertices && geometryVertices.length >= 3 && geometryIndices && geometryIndices.length >= 3) {
+        const positions = geometryVertices.flatMap(([x, y, z]) => [x, z, y]);
+        const bufferGeometry = new THREE.BufferGeometry();
+        bufferGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        bufferGeometry.setIndex(geometryIndices);
+        bufferGeometry.computeVertexNormals();
+
+        const material = new THREE.MeshPhongMaterial({
+          color: 0x88ccff,
+          transparent: true,
+          opacity: 0.7,
+          side: THREE.DoubleSide,
+        });
+
+        mesh = new THREE.Mesh(bufferGeometry, material);
+
+        if (space.geometry?.boundingBox) {
+          updateBoundsFromBox(space.geometry.boundingBox);
+        } else {
+          bufferGeometry.computeBoundingBox();
+          if (bufferGeometry.boundingBox) {
+            updateBounds([
+              bufferGeometry.boundingBox.min,
+              bufferGeometry.boundingBox.max,
+            ]);
+          }
+        }
+      } else if (geometryVertices && geometryVertices.length >= 3 && isPlanarFootprint(geometryVertices)) {
+        const vertices = geometryVertices.map(v =>
           new THREE.Vector3(v[0], v[2], v[1]) // IFC座標系からThree.js座標系に変換 (x, z, y)
         );
 
-        // ShapeGeometryまたはExtrudeGeometryを使用して2D形状を押し出し
         const height = space.height || 3;
 
-        // 2D形状を作成（XZ平面）
         const shape = new THREE.Shape();
         if (vertices.length > 0) {
           shape.moveTo(vertices[0].x, vertices[0].z);
@@ -213,7 +303,6 @@ export const IFCViewer: React.FC = () => {
           shape.closePath();
         }
 
-        // 押し出し設定
         const extrudeSettings = {
           depth: height,
           bevelEnabled: false,
@@ -229,56 +318,13 @@ export const IFCViewer: React.FC = () => {
 
         mesh = new THREE.Mesh(geometry, material);
 
-        // 位置を設定（階の高さを考慮）
         const baseY = space.location?.z ?? 0;
         mesh.position.set(0, baseY, 0);
-
-        // 回転を調整（ExtrudeGeometryはZ軸に沿って押し出されるため、Y軸に向ける）
         mesh.rotation.x = -Math.PI / 2;
 
         updateBounds(vertices);
       } else {
-        // バウンディングボックスまたは面積から形状を推定
-        const geometryData = space.geometry?.boundingBox;
-        const hasBoundingBox = Boolean(geometryData?.min && geometryData?.max);
-
-        const fallbackSize = Math.sqrt(space.area || 25) || 5;
-        const bboxWidth = hasBoundingBox ? geometryData!.max.x - geometryData!.min.x : null;
-        const bboxDepth = hasBoundingBox ? geometryData!.max.y - geometryData!.min.y : null;
-        const bboxHeight = hasBoundingBox ? geometryData!.max.z - geometryData!.min.z : null;
-
-        const width = bboxWidth && bboxWidth > 0 ? bboxWidth : fallbackSize;
-        const depth = bboxDepth && bboxDepth > 0 ? bboxDepth : fallbackSize;
-        const height = bboxHeight && bboxHeight > 0 ? bboxHeight : space.height || 3;
-
-        const geometry = new THREE.BoxGeometry(width, height, depth);
-        const material = new THREE.MeshPhongMaterial({
-          color: 0x88ccff,
-          transparent: true,
-          opacity: 0.7,
-          side: THREE.DoubleSide,
-        });
-
-        mesh = new THREE.Mesh(geometry, material);
-
-        if (hasBoundingBox) {
-          const bboxCenterX = (geometryData!.min.x + geometryData!.max.x) / 2;
-          const bboxCenterY = (geometryData!.min.z + geometryData!.max.z) / 2;
-          const bboxCenterZ = (geometryData!.min.y + geometryData!.max.y) / 2;
-          mesh.position.set(bboxCenterX, bboxCenterY, bboxCenterZ);
-        } else {
-          const location = space.location;
-          const centerX = location?.x ?? 0;
-          const centerY = location?.z ?? 0;
-          const centerZ = location?.y ?? 0;
-          mesh.position.set(centerX, centerY + height / 2, centerZ);
-        }
-
-        const pos = mesh.position;
-        updateBounds([
-          new THREE.Vector3(pos.x - width/2, pos.y - height/2, pos.z - depth/2),
-          new THREE.Vector3(pos.x + width/2, pos.y + height/2, pos.z + depth/2),
-        ]);
+        mesh = createBoxMesh(space);
       }
 
       mesh.userData = { spaceId: space.id };
