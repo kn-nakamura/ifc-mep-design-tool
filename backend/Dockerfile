@@ -10,10 +10,9 @@ ENV PORT=8000
 WORKDIR /app
 
 # システム依存パッケージのインストール
-# ifcopenshellのビルドに必要な依存関係を追加
+# 軽量化のため最小限の依存関係のみ
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libboost-all-dev \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Pythonパッケージのインストール
@@ -31,8 +30,9 @@ RUN mkdir -p /tmp/ifc_uploads
 EXPOSE ${PORT}
 
 # ヘルスチェック
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health')" || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)" || exit 1
 
 # アプリケーションを起動
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT}
+# 環境変数PORTがある場合はそれを使用、なければ8000
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}

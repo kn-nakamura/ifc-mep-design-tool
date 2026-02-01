@@ -117,18 +117,24 @@ ifc-mep-design-tool/
    - **Root Directory**: `frontend`
    - **Build Command**: `npm run build`
    - **Output Directory**: `dist`
+   - ※ `vercel.json`が自動的に検出されます
 4. 環境変数を設定：
    - `VITE_API_URL`: バックエンドのURL（例: `https://your-api.railway.app`）
+5. デプロイ完了後、生成されたURLを確認
 
 ### バックエンド（Railway - 推奨）
 
 1. [Railway](https://railway.app)にログイン
 2. 「New Project」→「Deploy from GitHub repo」
 3. リポジトリを選択
-4. 「Configure」でRoot Directoryを `backend` に設定
+4. 設定：
+   - **Root Directory**: `backend`
+   - **Builder**: Dockerfile（自動検出）
+   - ※ `railway.toml`が自動的に検出されます
 5. 環境変数を設定：
-   - `PORT`: `8000`
+   - `PORT`: `8000`（必須）
    - `CORS_ORIGINS`: VercelのURL（例: `https://your-app.vercel.app`）
+   - `LOG_LEVEL`: `INFO`（オプション）
 6. デプロイ完了後、生成されたURLをVercelの`VITE_API_URL`に設定
 
 ### バックエンド（Render - 代替）
@@ -140,9 +146,12 @@ ifc-mep-design-tool/
    - **Root Directory**: `backend`
    - **Runtime**: Docker
    - **Region**: Singapore（日本に近い）
+   - ※ `render.yaml`が自動的に検出されます
 5. 環境変数を設定：
-   - `PORT`: `8000`
-   - `CORS_ORIGINS`: VercelのURL
+   - `PORT`: `8000`（必須）
+   - `CORS_ORIGINS`: VercelのURL（例: `https://your-app.vercel.app`）
+   - `LOG_LEVEL`: `INFO`（オプション）
+6. デプロイ完了後、生成されたURLをVercelの`VITE_API_URL`に設定
 
 ### デプロイ後の設定
 

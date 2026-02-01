@@ -1,18 +1,21 @@
 # Render.com デプロイ設定
-# このファイルをリポジトリルートに配置するか、backendディレクトリから使用
+# このファイルをリポジトリのbackendディレクトリに配置
 services:
   - type: web
     name: ifc-mep-design-api
     runtime: docker
     dockerfilePath: ./Dockerfile
-    dockerContext: .
+    dockerContext: ./
     region: singapore  # 日本に近いリージョン
     plan: free  # または starter ($7/月)
     healthCheckPath: /health
+    autoDeploy: true  # 自動デプロイを有効化
     envVars:
       - key: PORT
         value: 8000
       - key: CORS_ORIGINS
-        sync: false  # ダッシュボードから設定
+        sync: false  # ダッシュボードから設定（例: https://your-app.vercel.app）
       - key: PYTHON_VERSION
-        value: 3.11
+        value: "3.11"
+      - key: LOG_LEVEL
+        value: INFO
