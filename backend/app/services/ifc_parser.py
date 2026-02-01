@@ -244,12 +244,15 @@ class IFCParserService:
                 max_y = max(max_y, y)
                 max_z = max(max_z, z)
 
+            raw_indices = getattr(shape.geometry, "faces", None)
+            indices = [int(i) for i in raw_indices] if raw_indices else None
+
             bounding_box = BoundingBox(
                 min=Point3D(x=min_x, y=min_y, z=min_z),
                 max=Point3D(x=max_x, y=max_y, z=max_z),
             )
 
-            return Geometry3D(vertices=vertices, boundingBox=bounding_box)
+            return Geometry3D(vertices=vertices, indices=indices, boundingBox=bounding_box)
         except Exception as e:
             logger.warning(f"ジオメトリ取得エラー: {e}")
             return None
