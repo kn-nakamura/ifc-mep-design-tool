@@ -159,12 +159,30 @@ export const IFCViewer: React.FC = () => {
     });
     spaceMeshesRef.current = [];
 
-    // スペースごとにメッシュを作成（簡易版）
-    spaces.forEach((space, index) => {
-      // 簡易的な箱形状
-      const width = Math.sqrt(space.area || 25) || 5;
-      const height = space.height || 3;
-      const depth = Math.sqrt(space.area || 25) || 5;
+    const fallbackSize = 5;
+    const boundsMin = new THREE.Vector3(Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
+    const boundsMax = new THREE.Vector3(Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY);
+
+    const updateBounds = (position: THREE.Vector3, size: THREE.Vector3) => {
+      const halfSize = size.clone().multiplyScalar(0.5);
+      const min = position.clone().sub(halfSize);
+      const max = position.clone().add(halfSize);
+      boundsMin.min(min);
+      boundsMax.max(max);
+    };
+
+    // スペースごとにメッシュを作成（位置・形状を保持）
+    spaces.forEach((space) => {
+      const geometryData = space.geometry?.boundingBox;
+      const hasBoundingBox = Boolean(geometryData?.min && geometryData?.max);
+
+      const bboxWidth = hasBoundingBox ? geometryData!.max.x - geometryData!.min.x : null;
+      const bboxDepth = hasBoundingBox ? geometryData!.max.y - geometryData!.min.y : null;
+      const bboxHeight = hasBoundingBox ? geometryData!.max.z - geometryData!.min.z : null;
+
+      const width = bboxWidth && bboxWidth > 0 ? bboxWidth : Math.sqrt(space.area || fallbackSize * fallbackSize) || fallbackSize;
+      const depth = bboxDepth && bboxDepth > 0 ? bboxDepth : Math.sqrt(space.area || fallbackSize * fallbackSize) || fallbackSize;
+      const height = bboxHeight && bboxHeight > 0 ? bboxHeight : space.height || 3;
 
       const geometry = new THREE.BoxGeometry(width, height, depth);
       const material = new THREE.MeshPhongMaterial({
@@ -176,32 +194,39 @@ export const IFCViewer: React.FC = () => {
 
       const mesh = new THREE.Mesh(geometry, material);
 
-      // 配置（グリッド状に並べる）
-      const cols = Math.ceil(Math.sqrt(spaces.length));
-      const row = Math.floor(index / cols);
-      const col = index % cols;
-      const spacing = 10;
+      const location = space.location;
+      const centerX = location?.x ?? 0;
+      const centerY = location?.z ?? 0;
+      const centerZ = location?.y ?? 0;
 
-      mesh.position.set(
-        (col - cols / 2) * spacing,
-        height / 2,
-        (row - Math.ceil(spaces.length / cols) / 2) * spacing
-      );
+      if (hasBoundingBox) {
+        const bboxCenterX = (geometryData!.min.x + geometryData!.max.x) / 2;
+        const bboxCenterY = (geometryData!.min.z + geometryData!.max.z) / 2;
+        const bboxCenterZ = (geometryData!.min.y + geometryData!.max.y) / 2;
+        mesh.position.set(bboxCenterX, bboxCenterY, bboxCenterZ);
+      } else {
+        mesh.position.set(centerX, centerY + height / 2, centerZ);
+      }
 
       mesh.userData = { spaceId: space.id };
 
       sceneRef.current?.add(mesh);
       spaceMeshesRef.current.push(mesh);
+
+      updateBounds(mesh.position, new THREE.Vector3(width, height, depth));
     });
 
     console.log('IFCViewer: メッシュ作成完了', { count: spaceMeshesRef.current.length });
 
     // カメラ位置を調整
     if (cameraRef.current && controlsRef.current) {
-      const cols = Math.ceil(Math.sqrt(spaces.length));
-      const size = cols * 10;
-      cameraRef.current.position.set(size * 0.8, size * 0.8, size * 0.8);
-      controlsRef.current.target.set(0, 0, 0);
+      const center = boundsMin.clone().add(boundsMax).multiplyScalar(0.5);
+      const size = boundsMax.clone().sub(boundsMin);
+      const maxDimension = Math.max(size.x, size.y, size.z, 10);
+      const distance = maxDimension * 1.5;
+
+      cameraRef.current.position.set(center.x + distance, center.y + distance, center.z + distance);
+      controlsRef.current.target.copy(center);
     }
   }, [spaces]);
 
