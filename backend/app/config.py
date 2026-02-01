@@ -4,30 +4,36 @@
 """
 import os
 from functools import lru_cache
-from pydantic_settings import BaseSettings
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """アプリケーション設定クラス"""
 
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
+
     # サーバー設定
-    host: str = "0.0.0.0"
-    port: int = 8000
+    host: str = Field(default="0.0.0.0", validation_alias="HOST")
+    port: int = Field(default=8000, validation_alias="PORT")
 
     # CORS設定（カンマ区切りの文字列）
-    cors_origins: str = "http://localhost:3000,http://localhost:5173"
+    cors_origins: str = Field(
+        default="http://localhost:3000,http://localhost:5173",
+        validation_alias="CORS_ORIGINS"
+    )
 
     # ログレベル
-    log_level: str = "INFO"
+    log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
 
     # ファイルアップロード設定
-    upload_dir: str = "/tmp/ifc_uploads"
-    max_upload_size_mb: int = 100
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    upload_dir: str = Field(default="/tmp/ifc_uploads", validation_alias="UPLOAD_DIR")
+    max_upload_size_mb: int = Field(default=100, validation_alias="MAX_UPLOAD_SIZE_MB")
 
     @property
     def cors_origins_list(self) -> list[str]:
