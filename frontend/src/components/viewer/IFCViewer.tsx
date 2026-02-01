@@ -91,7 +91,6 @@ export const IFCViewer: React.FC = () => {
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [is2DMode, setIs2DMode] = useState(false);
-  const [viewScale, setViewScale] = useState(1);
 
   const filteredSpaces = useIFCStore((state) => state.filteredSpaces());
   const selectedSpaceIds = useIFCStore((state) => state.selectedSpaceIds);
