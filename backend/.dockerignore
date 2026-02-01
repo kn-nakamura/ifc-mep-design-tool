@@ -68,6 +68,10 @@ Dockerfile*
 docker-compose*.yml
 .docker/
 
+# Deployment configs
+render.yaml
+railway.toml
+
 # IFC uploads (these should not be in the image)
 ifc_uploads/
 uploads/
