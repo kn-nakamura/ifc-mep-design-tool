@@ -11,30 +11,23 @@ export const MainLayout: React.FC = () => {
   const sidebarWidth = useUIStore((state) => state.sidebarWidth);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div className="app-shell">
       <Header />
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div className="app-body">
         <Sidebar width={sidebarWidth} />
-        <div style={{ flex: 1, position: 'relative' }}>
+        <div className="app-viewer">
           {showViewer && modelId ? (
             <IFCViewer />
           ) : (
             <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100%',
-                backgroundColor: '#f5f5f5',
-                color: '#666',
-              }}
+              className="app-placeholder"
             >
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '48px', marginBottom: '16px' }}>📁</div>
-                <div style={{ fontSize: '18px', marginBottom: '8px' }}>
+              <div className="app-placeholder-content">
+                <div className="app-placeholder-icon">📁</div>
+                <div className="app-placeholder-title">
                   IFCファイルをアップロードしてください
                 </div>
-                <div style={{ fontSize: '14px', color: '#999' }}>
+                <div className="app-placeholder-subtitle">
                   左側のサイドバーからファイルを選択できます
                 </div>
               </div>
