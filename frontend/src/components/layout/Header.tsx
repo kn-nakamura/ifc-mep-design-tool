@@ -6,40 +6,19 @@ export const Header: React.FC = () => {
 
   return (
     <header
-      style={{
-        height: '60px',
-        backgroundColor: '#2c3e50',
-        color: 'white',
-        display: 'flex',
-        alignItems: 'center',
-        padding: '0 20px',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-      }}
+      className="app-header"
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div style={{ fontSize: '24px', fontWeight: 'bold' }}>
+      <div className="app-header-content">
+        <div className="app-header-title">
           IFC MEP Design Tool
         </div>
         {modelInfo && (
           <>
-            <div
-              style={{
-                height: '24px',
-                width: '1px',
-                backgroundColor: 'rgba(255,255,255,0.3)',
-              }}
-            />
-            <div style={{ fontSize: '14px', opacity: 0.9 }}>
+            <div className="app-header-separator" />
+            <div className="app-header-filename">
               {modelInfo.filename}
             </div>
-            <div
-              style={{
-                fontSize: '12px',
-                padding: '4px 8px',
-                backgroundColor: 'rgba(255,255,255,0.2)',
-                borderRadius: '4px',
-              }}
-            >
+            <div className="app-header-badge">
               {modelInfo.spaceCount} スペース
             </div>
           </>

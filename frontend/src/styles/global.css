@@ -18,6 +18,271 @@ body {
   height: 100vh;
 }
 
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.app-viewer {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.app-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background-color: #f5f5f5;
+  color: #666;
+}
+
+.app-placeholder-content {
+  text-align: center;
+  padding: 0 16px;
+}
+
+.app-placeholder-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.app-placeholder-title {
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+
+.app-placeholder-subtitle {
+  font-size: 14px;
+  color: #999;
+}
+
+.app-header {
+  min-height: 60px;
+  background-color: #2c3e50;
+  color: white;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.app-header-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.app-header-title {
+  font-size: 24px;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.app-header-separator {
+  height: 24px;
+  width: 1px;
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.app-header-filename {
+  font-size: 14px;
+  opacity: 0.9;
+  word-break: break-all;
+}
+
+.app-header-badge {
+  font-size: 12px;
+  padding: 4px 8px;
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.app-sidebar {
+  width: var(--sidebar-width, 320px);
+  height: 100%;
+  background-color: #34495e;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #2c3e50;
+}
+
+.app-sidebar-tabs {
+  display: flex;
+  background-color: #2c3e50;
+  border-bottom: 1px solid #1a252f;
+}
+
+.app-sidebar-tab {
+  flex: 1;
+  padding: 12px 8px;
+  background-color: transparent;
+  color: #95a5a6;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: normal;
+  transition: all 0.2s;
+}
+
+.app-sidebar-tab.is-active {
+  background-color: #34495e;
+  color: white;
+  border-bottom: 2px solid #3498db;
+  font-weight: bold;
+}
+
+.app-sidebar-content {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+
+.app-sidebar-heading {
+  margin-bottom: 16px;
+  font-size: 16px;
+}
+
+.app-sidebar-warning {
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: #f39c12;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.app-upload {
+  display: block;
+  border: 2px dashed #3498db;
+  border-radius: 8px;
+  padding: 32px 16px;
+  text-align: center;
+  cursor: pointer;
+  background-color: #2c3e50;
+  transition: all 0.2s;
+}
+
+.app-upload-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.app-upload-title {
+  margin-bottom: 8px;
+}
+
+.app-upload-subtitle {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.app-upload-status {
+  margin-top: 16px;
+  padding: 12px;
+  background-color: #3498db;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.app-upload-error {
+  margin-top: 16px;
+  padding: 12px;
+  background-color: #e74c3c;
+  border-radius: 4px;
+  font-size: 14px;
+  white-space: pre-line;
+  word-break: break-word;
+}
+
+.app-new-project {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 16px;
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+@media (max-width: 900px) {
+  .app-body {
+    flex-direction: column;
+    overflow: auto;
+  }
+
+  .app-header {
+    padding: 12px 16px;
+    min-height: auto;
+  }
+
+  .app-header-title {
+    font-size: 20px;
+    white-space: normal;
+  }
+
+  .app-header-filename {
+    width: 100%;
+  }
+
+  .app-sidebar {
+    width: 100% !important;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid #2c3e50;
+  }
+
+  .app-viewer {
+    min-height: 40vh;
+  }
+
+  .app-sidebar-content {
+    padding: 12px;
+  }
+
+  .app-sidebar-tab {
+    padding: 10px 6px;
+    font-size: 12px;
+  }
+
+  .app-upload {
+    padding: 24px 12px;
+  }
+
+  .app-upload-icon {
+    font-size: 40px;
+  }
+
+  .app-placeholder {
+    padding: 24px 0;
+  }
+
+  .app-placeholder-icon {
+    font-size: 40px;
+  }
+
+  .app-placeholder-title {
+    font-size: 16px;
+  }
+
+  .app-placeholder-subtitle {
+    font-size: 13px;
+  }
+}
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;

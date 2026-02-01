@@ -74,24 +74,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ width }) => {
 
   return (
     <div
-      style={{
-        width: `${width}px`,
-        height: '100%',
-        backgroundColor: '#34495e',
-        color: 'white',
-        display: 'flex',
-        flexDirection: 'column',
-        borderRight: '1px solid #2c3e50',
-      }}
+      className="app-sidebar"
+      style={{ '--sidebar-width': `${width}px` } as React.CSSProperties}
     >
       {/* タブメニュー */}
       {modelId && (
         <div
-          style={{
-            display: 'flex',
-            backgroundColor: '#2c3e50',
-            borderBottom: '1px solid #1a252f',
-          }}
+          className="app-sidebar-tabs"
         >
           <TabButton
             active={activePanel === 'spaces'}
@@ -115,24 +104,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ width }) => {
       )}
 
       {/* コンテンツエリア */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
+      <div className="app-sidebar-content">
         {!modelId ? (
           /* ファイルアップロードUI */
           <div>
-            <h3 style={{ marginBottom: '16px', fontSize: '16px' }}>
+            <h3 className="app-sidebar-heading">
               新しいプロジェクト
             </h3>
 
             {/* API接続状態 */}
             {apiStatus === 'disconnected' && (
               <div
-                style={{
-                  marginBottom: '16px',
-                  padding: '12px',
-                  backgroundColor: '#f39c12',
-                  borderRadius: '4px',
-                  fontSize: '13px',
-                }}
+                className="app-sidebar-warning"
               >
                 <strong>警告:</strong> バックエンドサーバーに接続できません。
                 <br />
@@ -142,16 +125,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ width }) => {
 
             <label
               htmlFor="ifc-file-input"
-              style={{
-                display: 'block',
-                border: '2px dashed #3498db',
-                borderRadius: '8px',
-                padding: '32px 16px',
-                textAlign: 'center',
-                cursor: 'pointer',
-                backgroundColor: '#2c3e50',
-                transition: 'all 0.2s',
-              }}
+              className="app-upload"
               onDragOver={(e) => {
                 e.preventDefault();
                 e.currentTarget.style.backgroundColor = '#3498db';
@@ -172,11 +146,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ width }) => {
                 }
               }}
             >
-              <div style={{ fontSize: '48px', marginBottom: '12px' }}>📁</div>
-              <div style={{ marginBottom: '8px' }}>
+              <div className="app-upload-icon">📁</div>
+              <div className="app-upload-title">
                 IFCファイルをドラッグ＆ドロップ
               </div>
-              <div style={{ fontSize: '12px', opacity: 0.7 }}>
+              <div className="app-upload-subtitle">
                 またはクリックしてファイルを選択
               </div>
               <input
@@ -191,13 +165,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ width }) => {
 
             {isUploading && (
               <div
-                style={{
-                  marginTop: '16px',
-                  padding: '12px',
-                  backgroundColor: '#3498db',
-                  borderRadius: '4px',
-                  textAlign: 'center',
-                }}
+                className="app-upload-status"
               >
                 アップロード中...
               </div>
@@ -205,15 +173,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ width }) => {
 
             {uploadError && (
               <div
-                style={{
-                  marginTop: '16px',
-                  padding: '12px',
-                  backgroundColor: '#e74c3c',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  whiteSpace: 'pre-line',
-                  wordBreak: 'break-word',
-                }}
+                className="app-upload-error"
               >
                 {uploadError}
               </div>
@@ -224,17 +184,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ width }) => {
           <>
             <button
               onClick={handleNewProject}
-              style={{
-                width: '100%',
-                padding: '8px',
-                marginBottom: '16px',
-                backgroundColor: '#e74c3c',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '14px',
-              }}
+              className="app-new-project"
             >
               新しいプロジェクト
             </button>
@@ -257,18 +207,7 @@ const TabButton: React.FC<{
 }> = ({ active, onClick, children }) => (
   <button
     onClick={onClick}
-    style={{
-      flex: 1,
-      padding: '12px 8px',
-      backgroundColor: active ? '#34495e' : 'transparent',
-      color: active ? 'white' : '#95a5a6',
-      border: 'none',
-      borderBottom: active ? '2px solid #3498db' : '2px solid transparent',
-      cursor: 'pointer',
-      fontSize: '13px',
-      fontWeight: active ? 'bold' : 'normal',
-      transition: 'all 0.2s',
-    }}
+    className={`app-sidebar-tab${active ? ' is-active' : ''}`}
   >
     {children}
   </button>
