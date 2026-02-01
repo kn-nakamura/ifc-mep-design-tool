@@ -1,12 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
+import os
 
 from app.api import ifc, calculations
+from app.config import get_settings
+
+# 設定を取得
+settings = get_settings()
 
 # ロギング設定
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, settings.log_level.upper(), logging.INFO),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
@@ -19,10 +24,11 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS設定（フロントエンドからのアクセスを許可）
+# CORS設定（環境変数から読み込み）
+logger.info(f"CORS許可オリジン: {settings.cors_origins_list}")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # 開発用
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
