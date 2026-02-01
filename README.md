@@ -108,6 +108,12 @@ ifc-mep-design-tool/
 
 ## デプロイ
 
+### 重要な注意点
+
+- **環境変数の設定は必須です**。特に`CORS_ORIGINS`を正しく設定しないとフロントエンドからのアクセスが拒否されます
+- バックエンドの環境変数は**すべて大文字**で設定してください（例: `PORT`, `CORS_ORIGINS`）
+- Railwayなど一部のプラットフォームでは`PORT`が自動的に設定されますが、明示的に設定することを推奨します
+
 ### フロントエンド（Vercel）
 
 1. [Vercel](https://vercel.com)にログイン
@@ -131,9 +137,9 @@ ifc-mep-design-tool/
    - **Root Directory**: `backend`
    - **Builder**: Dockerfile（自動検出）
    - ※ `railway.toml`が自動的に検出されます
-5. 環境変数を設定：
-   - `PORT`: `8000`（必須）
-   - `CORS_ORIGINS`: VercelのURL（例: `https://your-app.vercel.app`）
+5. **重要**: 環境変数を必ず設定：
+   - `PORT`: Railwayが自動設定しますが、`8000`を明示的に設定することを推奨
+   - `CORS_ORIGINS`: VercelのURL（例: `https://your-app.vercel.app`）**必須**
    - `LOG_LEVEL`: `INFO`（オプション）
 6. デプロイ完了後、生成されたURLをVercelの`VITE_API_URL`に設定
 
@@ -147,9 +153,9 @@ ifc-mep-design-tool/
    - **Runtime**: Docker
    - **Region**: Singapore（日本に近い）
    - ※ `render.yaml`が自動的に検出されます
-5. 環境変数を設定：
-   - `PORT`: `8000`（必須）
-   - `CORS_ORIGINS`: VercelのURL（例: `https://your-app.vercel.app`）
+5. **重要**: 環境変数を必ず設定：
+   - `PORT`: Renderが動的に設定しますが、デフォルトは`8000`
+   - `CORS_ORIGINS`: VercelのURL（例: `https://your-app.vercel.app`）**必須**
    - `LOG_LEVEL`: `INFO`（オプション）
 6. デプロイ完了後、生成されたURLをVercelの`VITE_API_URL`に設定
 
@@ -167,6 +173,26 @@ cd backend
 docker build -t ifc-mep-backend .
 docker run -p 8000:8000 -e CORS_ORIGINS="http://localhost:3000" ifc-mep-backend
 ```
+
+### デプロイのトラブルシューティング
+
+#### ヘルスチェックが失敗する場合
+
+1. 環境変数`PORT`が正しく設定されているか確認
+2. アプリケーションログを確認して、起動時のエラーを特定
+3. `/health`エンドポイントにアクセスできるか確認
+
+#### CORS エラーが発生する場合
+
+1. バックエンドの環境変数`CORS_ORIGINS`にフロントエンドのURLが含まれているか確認
+2. URLの末尾にスラッシュが含まれていないか確認（例: `https://app.vercel.app`が正しい、`https://app.vercel.app/`は不可）
+3. 複数のオリジンを設定する場合はカンマ区切り（例: `https://app1.vercel.app,https://app2.vercel.app`）
+
+#### ビルドが失敗する場合
+
+1. `requirements.txt`に記載されているすべてのパッケージがインストール可能か確認
+2. Dockerfileの`RUN`コマンドでエラーが発生していないか確認
+3. プラットフォームのビルドログを詳細に確認
 
 ## 今後の拡張予定（Phase 2以降）
 
