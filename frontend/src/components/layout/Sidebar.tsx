@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useIFCStore } from '@/store/ifcStore';
 import { useUIStore } from '@/store/uiStore';
 import { ifcService } from '@/services/ifcService';
@@ -13,9 +13,19 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ width }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [apiStatus, setApiStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   
   const { modelId, setModelId, setModelInfo, setSpaces, setLoading, reset } = useIFCStore();
   const { activePanel, setActivePanel } = useUIStore();
+
+  // APIの接続状態を確認
+  useEffect(() => {
+    const checkApiStatus = async () => {
+      const isConnected = await ifcService.checkHealth();
+      setApiStatus(isConnected ? 'connected' : 'disconnected');
+    };
+    checkApiStatus();
+  }, []);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -45,7 +55,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ width }) => {
       
     } catch (error: any) {
       console.error('Upload error:', error);
-      setUploadError(error.response?.data?.detail || 'ファイルのアップロードに失敗しました');
+      // userMessageがあればそれを使用、なければレスポンスのdetail、最後にデフォルトメッセージ
+      const errorMessage = error.userMessage || error.response?.data?.detail || 'ファイルのアップロードに失敗しました';
+      setUploadError(errorMessage);
       reset();
     } finally {
       setIsUploading(false);
@@ -110,7 +122,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ width }) => {
             <h3 style={{ marginBottom: '16px', fontSize: '16px' }}>
               新しいプロジェクト
             </h3>
-            
+
+            {/* API接続状態 */}
+            {apiStatus === 'disconnected' && (
+              <div
+                style={{
+                  marginBottom: '16px',
+                  padding: '12px',
+                  backgroundColor: '#f39c12',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                }}
+              >
+                <strong>警告:</strong> バックエンドサーバーに接続できません。
+                <br />
+                サーバーが起動しているか確認してください。
+              </div>
+            )}
+
             <label
               htmlFor="ifc-file-input"
               style={{
@@ -182,6 +211,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ width }) => {
                   backgroundColor: '#e74c3c',
                   borderRadius: '4px',
                   fontSize: '14px',
+                  whiteSpace: 'pre-line',
+                  wordBreak: 'break-word',
                 }}
               >
                 {uploadError}

@@ -3,6 +3,18 @@ import type { IFCUploadResponse, IFCModelInfo, SpaceList, Space } from '@/types/
 
 export const ifcService = {
   /**
+   * バックエンドの接続状態を確認
+   */
+  checkHealth: async (): Promise<boolean> => {
+    try {
+      await api.get('/health');
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
    * IFCファイルをアップロード
    */
   uploadIFC: async (file: File): Promise<IFCUploadResponse> => {
