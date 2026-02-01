@@ -7,7 +7,7 @@ import { VentilationMethod } from '@/types/calculation.types';
 export const CalculationPanel: React.FC = () => {
   const modelId = useIFCStore((state) => state.modelId);
   const spaces = useIFCStore((state) => state.spaces);
-  const selectedSpaceId = useIFCStore((state) => state.selectedSpaceId);
+  const selectedSpaceIds = useIFCStore((state) => state.selectedSpaceIds);
   
   const {
     ventilationResults,
@@ -36,7 +36,9 @@ export const CalculationPanel: React.FC = () => {
     }
   };
 
-  const selectedResult = selectedSpaceId ? ventilationResults[selectedSpaceId] : null;
+  const selectedResult = selectedSpaceIds.length === 1
+    ? ventilationResults[selectedSpaceIds[0]]
+    : null;
   const hasResults = Object.keys(ventilationResults).length > 0;
 
   return (
