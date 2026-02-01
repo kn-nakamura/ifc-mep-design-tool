@@ -9,6 +9,12 @@ export interface SpaceFilters {
   maxVolume: number | null;
   minHeight: number | null;
   maxHeight: number | null;
+  customFilters: Record<string, string>; // カスタムパラメーターフィルター
+}
+
+export interface SpaceGrouping {
+  enabled: boolean;
+  propertyKey: string | null;
 }
 
 interface IFCStore {
@@ -17,6 +23,8 @@ interface IFCStore {
   spaces: Space[];
   selectedSpaceIds: string[];
   filters: SpaceFilters;
+  grouping: SpaceGrouping;
+  colorByProperty: string | null;
   isLoading: boolean;
   error: string | null;
 
@@ -24,12 +32,16 @@ interface IFCStore {
   setModelId: (modelId: string | null) => void;
   setModelInfo: (info: IFCModelInfo | null) => void;
   setSpaces: (spaces: Space[]) => void;
+  updateSpaceProperties: (spaceId: string, properties: Record<string, any>) => void;
+  updateMultipleSpaces: (updates: Array<{ id: string; properties: Record<string, any> }>) => void;
   setSelectedSpaceIds: (spaceIds: string[]) => void;
   addSelectedSpaceId: (spaceId: string) => void;
   removeSelectedSpaceId: (spaceId: string) => void;
   toggleSelectedSpaceId: (spaceId: string) => void;
   setFilters: (filters: Partial<SpaceFilters>) => void;
   resetFilters: () => void;
+  setGrouping: (grouping: Partial<SpaceGrouping>) => void;
+  setColorByProperty: (propertyKey: string | null) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   reset: () => void;
@@ -37,7 +49,10 @@ interface IFCStore {
   // Computed
   selectedSpaces: () => Space[];
   filteredSpaces: () => Space[];
+  groupedSpaces: () => Record<string, Space[]>;
   availableFloorLevels: () => string[];
+  availablePropertyKeys: () => string[];
+  availablePropertyValues: (propertyKey: string) => string[];
 }
 
 const defaultFilters: SpaceFilters = {
@@ -48,6 +63,12 @@ const defaultFilters: SpaceFilters = {
   maxVolume: null,
   minHeight: null,
   maxHeight: null,
+  customFilters: {},
+};
+
+const defaultGrouping: SpaceGrouping = {
+  enabled: false,
+  propertyKey: null,
 };
 
 export const useIFCStore = create<IFCStore>((set, get) => ({
@@ -56,12 +77,37 @@ export const useIFCStore = create<IFCStore>((set, get) => ({
   spaces: [],
   selectedSpaceIds: [],
   filters: defaultFilters,
+  grouping: defaultGrouping,
+  colorByProperty: null,
   isLoading: false,
   error: null,
 
   setModelId: (modelId) => set({ modelId }),
   setModelInfo: (modelInfo) => set({ modelInfo }),
   setSpaces: (spaces) => set({ spaces }),
+
+  updateSpaceProperties: (spaceId, properties) => {
+    const { spaces } = get();
+    const updatedSpaces = spaces.map(space =>
+      space.id === spaceId
+        ? { ...space, properties: { ...space.properties, ...properties } }
+        : space
+    );
+    set({ spaces: updatedSpaces });
+  },
+
+  updateMultipleSpaces: (updates) => {
+    const { spaces } = get();
+    const updateMap = new Map(updates.map(u => [u.id, u.properties]));
+    const updatedSpaces = spaces.map(space => {
+      const update = updateMap.get(space.id);
+      return update
+        ? { ...space, properties: { ...space.properties, ...update } }
+        : space;
+    });
+    set({ spaces: updatedSpaces });
+  },
+
   setSelectedSpaceIds: (selectedSpaceIds) => set({ selectedSpaceIds }),
 
   addSelectedSpaceId: (spaceId) => {
@@ -92,6 +138,13 @@ export const useIFCStore = create<IFCStore>((set, get) => ({
 
   resetFilters: () => set({ filters: defaultFilters }),
 
+  setGrouping: (grouping) => {
+    const currentGrouping = get().grouping;
+    set({ grouping: { ...currentGrouping, ...grouping } });
+  },
+
+  setColorByProperty: (colorByProperty) => set({ colorByProperty }),
+
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
 
@@ -101,6 +154,8 @@ export const useIFCStore = create<IFCStore>((set, get) => ({
     spaces: [],
     selectedSpaceIds: [],
     filters: defaultFilters,
+    grouping: defaultGrouping,
+    colorByProperty: null,
     isLoading: false,
     error: null,
   }),
@@ -144,8 +199,38 @@ export const useIFCStore = create<IFCStore>((set, get) => ({
         if (space.height > filters.maxHeight) return false;
       }
 
+      // カスタムフィルター
+      for (const [key, value] of Object.entries(filters.customFilters)) {
+        if (value && space.properties[key] !== value) {
+          return false;
+        }
+      }
+
       return true;
     });
+  },
+
+  groupedSpaces: () => {
+    const { grouping } = get();
+    const filteredSpaces = get().filteredSpaces();
+
+    if (!grouping.enabled || !grouping.propertyKey) {
+      return { 'すべて': filteredSpaces };
+    }
+
+    const grouped: Record<string, Space[]> = {};
+
+    filteredSpaces.forEach(space => {
+      const value = space.properties[grouping.propertyKey!];
+      const key = value !== undefined && value !== null ? String(value) : '(未設定)';
+
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key].push(space);
+    });
+
+    return grouped;
   },
 
   availableFloorLevels: () => {
@@ -157,5 +242,26 @@ export const useIFCStore = create<IFCStore>((set, get) => ({
       }
     });
     return Array.from(levels).sort();
+  },
+
+  availablePropertyKeys: () => {
+    const { spaces } = get();
+    const keys = new Set<string>();
+    spaces.forEach(space => {
+      Object.keys(space.properties).forEach(key => keys.add(key));
+    });
+    return Array.from(keys).sort();
+  },
+
+  availablePropertyValues: (propertyKey: string) => {
+    const { spaces } = get();
+    const values = new Set<string>();
+    spaces.forEach(space => {
+      const value = space.properties[propertyKey];
+      if (value !== undefined && value !== null) {
+        values.add(String(value));
+      }
+    });
+    return Array.from(values).sort();
   },
 }));

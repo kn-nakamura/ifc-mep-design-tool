@@ -224,8 +224,9 @@ class IFCParserService:
             shape = ifcopenshell.geom.create_shape(settings, ifc_space)
 
             raw_vertices = getattr(shape.geometry, "verts", None)
-            if not raw_vertices:
-                return None
+            if not raw_vertices or len(raw_vertices) < 3:
+                logger.warning(f"スペース {ifc_space.id()} の頂点情報が不足しています")
+                return self._create_fallback_geometry(ifc_space)
 
             vertices: List[List[float]] = []
             min_x = min_y = min_z = float("inf")
@@ -252,9 +253,42 @@ class IFCParserService:
                 max=Point3D(x=max_x, y=max_y, z=max_z),
             )
 
+            logger.debug(f"スペース {ifc_space.id()} のジオメトリ取得成功: {len(vertices)} 頂点, {len(indices) if indices else 0} インデックス")
             return Geometry3D(vertices=vertices, indices=indices, boundingBox=bounding_box)
         except Exception as e:
-            logger.warning(f"ジオメトリ取得エラー: {e}")
+            logger.warning(f"スペース {ifc_space.id()} のジオメトリ取得エラー: {e}")
+            return self._create_fallback_geometry(ifc_space)
+
+    def _create_fallback_geometry(self, ifc_space) -> Optional[Geometry3D]:
+        """フォールバック用のジオメトリを作成（面積と位置から推定）"""
+        try:
+            # 面積と高さから推定
+            area, volume, height = self._get_quantities(ifc_space)
+            location = self._get_location(ifc_space)
+
+            if area and area > 0:
+                # 面積から正方形のサイズを推定
+                size = (area ** 0.5) / 2  # 半径として使用
+                h = height if height and height > 0 else 3.0
+
+                # 中心位置
+                cx = location.x if location else 0.0
+                cy = location.y if location else 0.0
+                cz = location.z if location else 0.0
+
+                # バウンディングボックスを作成
+                bounding_box = BoundingBox(
+                    min=Point3D(x=cx - size, y=cy - size, z=cz),
+                    max=Point3D(x=cx + size, y=cy + size, z=cz + h),
+                )
+
+                logger.info(f"スペース {ifc_space.id()} のフォールバックジオメトリを作成: area={area:.2f}, size={size:.2f}")
+                return Geometry3D(vertices=[], indices=None, boundingBox=bounding_box)
+
+            logger.warning(f"スペース {ifc_space.id()} のフォールバックジオメトリ作成不可: 面積情報なし")
+            return None
+        except Exception as e:
+            logger.error(f"スペース {ifc_space.id()} のフォールバックジオメトリ作成エラー: {e}")
             return None
     
     def get_statistics(self) -> Dict[str, int]:

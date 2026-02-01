@@ -3,6 +3,8 @@ import { useIFCStore } from '@/store/ifcStore';
 
 export const FilterPanel: React.FC = () => {
   const availableFloorLevels = useIFCStore((state) => state.availableFloorLevels());
+  const availablePropertyKeys = useIFCStore((state) => state.availablePropertyKeys());
+  const availablePropertyValues = useIFCStore((state) => state.availablePropertyValues);
   const filters = useIFCStore((state) => state.filters);
   const setFilters = useIFCStore((state) => state.setFilters);
   const resetFilters = useIFCStore((state) => state.resetFilters);
@@ -13,6 +15,7 @@ export const FilterPanel: React.FC = () => {
   const [maxVolume, setMaxVolume] = useState<string>(filters.maxVolume?.toString() || '');
   const [minHeight, setMinHeight] = useState<string>(filters.minHeight?.toString() || '');
   const [maxHeight, setMaxHeight] = useState<string>(filters.maxHeight?.toString() || '');
+  const [selectedCustomProperty, setSelectedCustomProperty] = useState<string>('');
 
   const handleFloorLevelToggle = (level: string) => {
     const newLevels = filters.floorLevels.includes(level)
@@ -40,6 +43,17 @@ export const FilterPanel: React.FC = () => {
     setMaxVolume('');
     setMinHeight('');
     setMaxHeight('');
+    setSelectedCustomProperty('');
+  };
+
+  const handleCustomFilterChange = (propertyKey: string, value: string) => {
+    const newCustomFilters = { ...filters.customFilters };
+    if (value) {
+      newCustomFilters[propertyKey] = value;
+    } else {
+      delete newCustomFilters[propertyKey];
+    }
+    setFilters({ customFilters: newCustomFilters });
   };
 
   return (
@@ -201,6 +215,95 @@ export const FilterPanel: React.FC = () => {
           />
         </div>
       </div>
+
+      {/* カスタムパラメーターフィルター */}
+      {availablePropertyKeys.length > 0 && (
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ fontSize: '13px', marginBottom: '8px', fontWeight: 'bold', opacity: 0.9 }}>
+            カスタムパラメーター
+          </div>
+          <select
+            value={selectedCustomProperty}
+            onChange={(e) => setSelectedCustomProperty(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '8px',
+              backgroundColor: '#2c3e50',
+              border: '1px solid #3498db',
+              borderRadius: '4px',
+              color: 'white',
+              fontSize: '13px',
+              marginBottom: '8px',
+            }}
+          >
+            <option value="">パラメーターを選択</option>
+            {availablePropertyKeys.map((key) => (
+              <option key={key} value={key}>
+                {key}
+              </option>
+            ))}
+          </select>
+          {selectedCustomProperty && (
+            <select
+              value={filters.customFilters[selectedCustomProperty] || ''}
+              onChange={(e) => handleCustomFilterChange(selectedCustomProperty, e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px',
+                backgroundColor: '#2c3e50',
+                border: '1px solid #3498db',
+                borderRadius: '4px',
+                color: 'white',
+                fontSize: '13px',
+              }}
+            >
+              <option value="">すべて</option>
+              {availablePropertyValues(selectedCustomProperty).map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          )}
+          {Object.keys(filters.customFilters).length > 0 && (
+            <div style={{ marginTop: '8px', fontSize: '12px' }}>
+              <div style={{ marginBottom: '4px', opacity: 0.7 }}>適用中のフィルター:</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {Object.entries(filters.customFilters).map(([key, value]) => (
+                  <div
+                    key={key}
+                    style={{
+                      padding: '6px',
+                      backgroundColor: 'rgba(52, 152, 219, 0.2)',
+                      borderRadius: '4px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span>
+                      {key}: {value}
+                    </span>
+                    <button
+                      onClick={() => handleCustomFilterChange(key, '')}
+                      style={{
+                        backgroundColor: 'transparent',
+                        border: 'none',
+                        color: '#e74c3c',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        padding: '0 4px',
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ボタン */}
       <div style={{ display: 'flex', gap: '8px' }}>
