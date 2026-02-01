@@ -1,0 +1,18 @@
+# Render.com デプロイ設定
+# このファイルをリポジトリルートに配置するか、backendディレクトリから使用
+services:
+  - type: web
+    name: ifc-mep-design-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    region: singapore  # 日本に近いリージョン
+    plan: free  # または starter ($7/月)
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: CORS_ORIGINS
+        sync: false  # ダッシュボードから設定
+      - key: PYTHON_VERSION
+        value: 3.11

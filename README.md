@@ -106,6 +106,59 @@ ifc-mep-design-tool/
     └── package.json
 ```
 
+## デプロイ
+
+### フロントエンド（Vercel）
+
+1. [Vercel](https://vercel.com)にログイン
+2. GitHubリポジトリをインポート
+3. プロジェクト設定：
+   - **Framework Preset**: Vite
+   - **Root Directory**: `frontend`
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+4. 環境変数を設定：
+   - `VITE_API_URL`: バックエンドのURL（例: `https://your-api.railway.app`）
+
+### バックエンド（Railway - 推奨）
+
+1. [Railway](https://railway.app)にログイン
+2. 「New Project」→「Deploy from GitHub repo」
+3. リポジトリを選択
+4. 「Configure」でRoot Directoryを `backend` に設定
+5. 環境変数を設定：
+   - `PORT`: `8000`
+   - `CORS_ORIGINS`: VercelのURL（例: `https://your-app.vercel.app`）
+6. デプロイ完了後、生成されたURLをVercelの`VITE_API_URL`に設定
+
+### バックエンド（Render - 代替）
+
+1. [Render](https://render.com)にログイン
+2. 「New」→「Web Service」
+3. GitHubリポジトリを接続
+4. 設定：
+   - **Root Directory**: `backend`
+   - **Runtime**: Docker
+   - **Region**: Singapore（日本に近い）
+5. 環境変数を設定：
+   - `PORT`: `8000`
+   - `CORS_ORIGINS`: VercelのURL
+
+### デプロイ後の設定
+
+1. バックエンドのURLを確認（例: `https://ifc-mep-api.railway.app`）
+2. Vercelで環境変数 `VITE_API_URL` を更新
+3. フロントエンドを再デプロイ
+4. 動作確認
+
+### ローカルDocker起動
+
+```bash
+cd backend
+docker build -t ifc-mep-backend .
+docker run -p 8000:8000 -e CORS_ORIGINS="http://localhost:3000" ifc-mep-backend
+```
+
 ## 今後の拡張予定（Phase 2以降）
 
 - [ ] 機器情報の抽出と表示
