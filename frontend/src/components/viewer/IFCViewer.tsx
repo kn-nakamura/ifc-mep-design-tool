@@ -80,7 +80,8 @@ function hslToHex(h: number, s: number, l: number): number {
 export const IFCViewer: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const perspectiveCameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const orthographicCameraRef = useRef<THREE.OrthographicCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const spaceMeshesRef = useRef<THREE.Mesh[]>([]);
@@ -89,6 +90,8 @@ export const IFCViewer: React.FC = () => {
 
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
+  const [is2DMode, setIs2DMode] = useState(false);
+  const [viewScale, setViewScale] = useState(1);
 
   const filteredSpaces = useIFCStore((state) => state.filteredSpaces());
   const selectedSpaceIds = useIFCStore((state) => state.selectedSpaceIds);
@@ -116,15 +119,30 @@ export const IFCViewer: React.FC = () => {
       scene.background = new THREE.Color(0xf0f0f0);
       sceneRef.current = scene;
 
-      // カメラ
-      const camera = new THREE.PerspectiveCamera(
+      // パースペクティブカメラ
+      const perspectiveCamera = new THREE.PerspectiveCamera(
         75,
         containerRef.current.clientWidth / containerRef.current.clientHeight,
         0.1,
         1000
       );
-      camera.position.set(30, 30, 30);
-      cameraRef.current = camera;
+      perspectiveCamera.position.set(30, 30, 30);
+      perspectiveCameraRef.current = perspectiveCamera;
+
+      // オルソグラフィックカメラ（2Dビュー用）
+      const aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
+      const frustumSize = 50;
+      const orthographicCamera = new THREE.OrthographicCamera(
+        (frustumSize * aspect) / -2,
+        (frustumSize * aspect) / 2,
+        frustumSize / 2,
+        frustumSize / -2,
+        0.1,
+        1000
+      );
+      orthographicCamera.position.set(0, 100, 0);
+      orthographicCamera.lookAt(0, 0, 0);
+      orthographicCameraRef.current = orthographicCamera;
 
       // レンダラー
       const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -132,8 +150,8 @@ export const IFCViewer: React.FC = () => {
       containerRef.current.appendChild(renderer.domElement);
       rendererRef.current = renderer;
 
-      // コントロール
-      const controls = new OrbitControls(camera, renderer.domElement);
+      // コントロール（初期はパースペクティブカメラ）
+      const controls = new OrbitControls(perspectiveCamera, renderer.domElement);
       controls.enableDamping = true;
       controls.dampingFactor = 0.05;
       controlsRef.current = controls;
@@ -154,19 +172,22 @@ export const IFCViewer: React.FC = () => {
       const animate = () => {
         requestAnimationFrame(animate);
         controls.update();
-        renderer.render(scene, camera);
+        const currentCamera = is2DMode ? orthographicCamera : perspectiveCamera;
+        renderer.render(scene, currentCamera);
       };
       animate();
 
       // クリックハンドラー
       const handleClick = (event: MouseEvent) => {
-        if (!containerRef.current || !cameraRef.current) return;
+        if (!containerRef.current) return;
+        const currentCamera = is2DMode ? orthographicCameraRef.current : perspectiveCameraRef.current;
+        if (!currentCamera) return;
 
         const rect = renderer.domElement.getBoundingClientRect();
         mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-        raycasterRef.current.setFromCamera(mouseRef.current, cameraRef.current);
+        raycasterRef.current.setFromCamera(mouseRef.current, currentCamera);
         const intersects = raycasterRef.current.intersectObjects(spaceMeshesRef.current);
 
         if (intersects.length > 0) {
@@ -191,10 +212,22 @@ export const IFCViewer: React.FC = () => {
 
       // リサイズハンドラー
       const handleResize = () => {
-        if (!containerRef.current || !camera || !renderer) return;
+        if (!containerRef.current || !perspectiveCamera || !orthographicCamera || !renderer) return;
 
-        camera.aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
-        camera.updateProjectionMatrix();
+        const aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
+
+        // パースペクティブカメラの更新
+        perspectiveCamera.aspect = aspect;
+        perspectiveCamera.updateProjectionMatrix();
+
+        // オルソグラフィックカメラの更新
+        const frustumSize = 50;
+        orthographicCamera.left = (frustumSize * aspect) / -2;
+        orthographicCamera.right = (frustumSize * aspect) / 2;
+        orthographicCamera.top = frustumSize / 2;
+        orthographicCamera.bottom = frustumSize / -2;
+        orthographicCamera.updateProjectionMatrix();
+
         renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
       };
 
@@ -434,16 +467,45 @@ export const IFCViewer: React.FC = () => {
     });
 
     // カメラ位置を調整
-    if (cameraRef.current && controlsRef.current && spaceMeshesRef.current.length > 0) {
+    if (perspectiveCameraRef.current && orthographicCameraRef.current && controlsRef.current && spaceMeshesRef.current.length > 0) {
       const center = boundsMin.clone().add(boundsMax).multiplyScalar(0.5);
       const size = boundsMax.clone().sub(boundsMin);
       const maxDimension = Math.max(size.x, size.y, size.z, 10);
       const distance = maxDimension * 1.5;
 
-      cameraRef.current.position.set(center.x + distance, center.y + distance, center.z + distance);
+      // 3Dカメラの位置設定
+      perspectiveCameraRef.current.position.set(center.x + distance, center.y + distance, center.z + distance);
+
+      // 2Dカメラの位置設定（真上から）
+      orthographicCameraRef.current.position.set(center.x, center.y + distance, center.z);
+      orthographicCameraRef.current.lookAt(center);
+
       controlsRef.current.target.copy(center);
     }
   }, [filteredSpaces]);
+
+  // 2D/3D モード切り替え
+  useEffect(() => {
+    if (!controlsRef.current || !perspectiveCameraRef.current || !orthographicCameraRef.current) return;
+
+    const controls = controlsRef.current;
+
+    if (is2DMode) {
+      // 2Dモード: オルソグラフィックカメラに切り替え
+      (controls as any).object = orthographicCameraRef.current;
+      controls.enableRotate = false; // 回転を無効化
+      controls.maxPolarAngle = 0; // 真上のみ
+      controls.minPolarAngle = 0;
+    } else {
+      // 3Dモード: パースペクティブカメラに切り替え
+      (controls as any).object = perspectiveCameraRef.current;
+      controls.enableRotate = true; // 回転を有効化
+      controls.maxPolarAngle = Math.PI; // 制限を解除
+      controls.minPolarAngle = 0;
+    }
+
+    controls.update();
+  }, [is2DMode]);
 
   // 選択状態とハイライトの更新
   useEffect(() => {
@@ -604,11 +666,68 @@ export const IFCViewer: React.FC = () => {
         }}
       >
         <div><strong>操作方法</strong></div>
-        <div>左ドラッグ: 回転</div>
-        <div>右ドラッグ: 移動</div>
-        <div>ホイール: ズーム</div>
+        {is2DMode ? (
+          <>
+            <div>ドラッグ: 移動</div>
+            <div>ホイール: ズーム</div>
+          </>
+        ) : (
+          <>
+            <div>左ドラッグ: 回転</div>
+            <div>右ドラッグ: 移動</div>
+            <div>ホイール: ズーム</div>
+          </>
+        )}
         <div>クリック: スペース選択</div>
       </div>
+
+      {/* 2D/3D切り替えボタン */}
+      {isInitialized && !initError && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '16px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            gap: '4px',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            padding: '4px',
+            borderRadius: '6px',
+          }}
+        >
+          <button
+            onClick={() => setIs2DMode(false)}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: !is2DMode ? '#3498db' : 'transparent',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              fontWeight: !is2DMode ? 'bold' : 'normal',
+            }}
+          >
+            3D
+          </button>
+          <button
+            onClick={() => setIs2DMode(true)}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: is2DMode ? '#3498db' : 'transparent',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              fontWeight: is2DMode ? 'bold' : 'normal',
+            }}
+          >
+            2D
+          </button>
+        </div>
+      )}
 
       {/* スペース数表示 */}
       {filteredSpaces.length > 0 && (
