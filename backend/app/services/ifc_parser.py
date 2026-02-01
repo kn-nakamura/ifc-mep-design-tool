@@ -221,11 +221,17 @@ class IFCParserService:
         try:
             settings = ifcopenshell.geom.settings()
             settings.set(settings.USE_WORLD_COORDS, True)
-            shape = ifcopenshell.geom.create_shape(settings, ifc_space)
+
+            # 一部の環境でifcopenshell.geomが使えない場合があるため、try-except
+            try:
+                shape = ifcopenshell.geom.create_shape(settings, ifc_space)
+            except Exception as geom_error:
+                logger.warning(f"スペース {ifc_space.id()} のジオメトリ作成失敗 (ifcopenshell.geom): {geom_error}")
+                return self._create_fallback_geometry(ifc_space)
 
             raw_vertices = getattr(shape.geometry, "verts", None)
-            if not raw_vertices or len(raw_vertices) < 3:
-                logger.warning(f"スペース {ifc_space.id()} の頂点情報が不足しています")
+            if not raw_vertices or len(raw_vertices) < 9:  # 最低3頂点（9座標）必要
+                logger.warning(f"スペース {ifc_space.id()} の頂点情報が不足しています (頂点数: {len(raw_vertices) if raw_vertices else 0})")
                 return self._create_fallback_geometry(ifc_space)
 
             vertices: List[List[float]] = []
@@ -246,14 +252,21 @@ class IFCParserService:
                 max_z = max(max_z, z)
 
             raw_indices = getattr(shape.geometry, "faces", None)
-            indices = [int(i) for i in raw_indices] if raw_indices else None
+            indices = [int(i) for i in raw_indices] if raw_indices and len(raw_indices) >= 3 else None
+
+            # インデックスの検証
+            if indices:
+                max_index = max(indices)
+                if max_index >= len(vertices):
+                    logger.warning(f"スペース {ifc_space.id()} のインデックスが頂点数を超えています (max_index: {max_index}, vertices: {len(vertices)})")
+                    indices = None
 
             bounding_box = BoundingBox(
                 min=Point3D(x=min_x, y=min_y, z=min_z),
                 max=Point3D(x=max_x, y=max_y, z=max_z),
             )
 
-            logger.debug(f"スペース {ifc_space.id()} のジオメトリ取得成功: {len(vertices)} 頂点, {len(indices) if indices else 0} インデックス")
+            logger.info(f"スペース {ifc_space.id()} のジオメトリ取得成功: {len(vertices)} 頂点, {len(indices) if indices else 0} インデックス, bbox: ({min_x:.2f},{min_y:.2f},{min_z:.2f})-({max_x:.2f},{max_y:.2f},{max_z:.2f})")
             return Geometry3D(vertices=vertices, indices=indices, boundingBox=bounding_box)
         except Exception as e:
             logger.warning(f"スペース {ifc_space.id()} のジオメトリ取得エラー: {e}")
@@ -266,30 +279,75 @@ class IFCParserService:
             area, volume, height = self._get_quantities(ifc_space)
             location = self._get_location(ifc_space)
 
-            if area and area > 0:
-                # 面積から正方形のサイズを推定
-                size = (area ** 0.5) / 2  # 半径として使用
-                h = height if height and height > 0 else 3.0
+            # デフォルト値を設定
+            if not area or area <= 0:
+                area = 25.0  # デフォルト5m x 5m
+            h = height if height and height > 0 else 3.0
 
-                # 中心位置
-                cx = location.x if location else 0.0
-                cy = location.y if location else 0.0
-                cz = location.z if location else 0.0
+            # 面積から正方形のサイズを推定
+            half_size = (area ** 0.5) / 2
 
-                # バウンディングボックスを作成
-                bounding_box = BoundingBox(
-                    min=Point3D(x=cx - size, y=cy - size, z=cz),
-                    max=Point3D(x=cx + size, y=cy + size, z=cz + h),
-                )
+            # 中心位置
+            cx = location.x if location else 0.0
+            cy = location.y if location else 0.0
+            cz = location.z if location else 0.0
 
-                logger.info(f"スペース {ifc_space.id()} のフォールバックジオメトリを作成: area={area:.2f}, size={size:.2f}")
-                return Geometry3D(vertices=[], indices=None, boundingBox=bounding_box)
+            # 8頂点の直方体を作成（BoxGeometry用）
+            min_x = cx - half_size
+            max_x = cx + half_size
+            min_y = cy - half_size
+            max_y = cy + half_size
+            min_z = cz
+            max_z = cz + h
 
-            logger.warning(f"スペース {ifc_space.id()} のフォールバックジオメトリ作成不可: 面積情報なし")
-            return None
+            # 頂点リスト（直方体の8頂点）
+            vertices = [
+                [min_x, min_y, min_z],  # 0: 下面左前
+                [max_x, min_y, min_z],  # 1: 下面右前
+                [max_x, max_y, min_z],  # 2: 下面右奥
+                [min_x, max_y, min_z],  # 3: 下面左奥
+                [min_x, min_y, max_z],  # 4: 上面左前
+                [max_x, min_y, max_z],  # 5: 上面右前
+                [max_x, max_y, max_z],  # 6: 上面右奥
+                [min_x, max_y, max_z],  # 7: 上面左奥
+            ]
+
+            # インデックス（12個の三角形 = 6面 x 2三角形）
+            indices = [
+                # 下面
+                0, 1, 2, 0, 2, 3,
+                # 上面
+                4, 6, 5, 4, 7, 6,
+                # 前面
+                0, 5, 1, 0, 4, 5,
+                # 奥面
+                2, 7, 3, 2, 6, 7,
+                # 左面
+                0, 7, 4, 0, 3, 7,
+                # 右面
+                1, 6, 2, 1, 5, 6,
+            ]
+
+            # バウンディングボックスを作成
+            bounding_box = BoundingBox(
+                min=Point3D(x=min_x, y=min_y, z=min_z),
+                max=Point3D(x=max_x, y=max_y, z=max_z),
+            )
+
+            logger.info(f"スペース {ifc_space.id()} のフォールバックジオメトリを作成: area={area:.2f}, half_size={half_size:.2f}, height={h:.2f}, center=({cx:.2f},{cy:.2f},{cz:.2f})")
+            return Geometry3D(vertices=vertices, indices=indices, boundingBox=bounding_box)
+
         except Exception as e:
             logger.error(f"スペース {ifc_space.id()} のフォールバックジオメトリ作成エラー: {e}")
-            return None
+            # 最終フォールバック: 最小限のバウンディングボックスだけを返す
+            try:
+                bounding_box = BoundingBox(
+                    min=Point3D(x=0, y=0, z=0),
+                    max=Point3D(x=5, y=5, z=3),
+                )
+                return Geometry3D(vertices=[], indices=None, boundingBox=bounding_box)
+            except:
+                return None
     
     def get_statistics(self) -> Dict[str, int]:
         """統計情報を取得"""

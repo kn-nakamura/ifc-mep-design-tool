@@ -87,6 +87,7 @@ export const IFCViewer: React.FC = () => {
   const spaceMeshesRef = useRef<THREE.Mesh[]>([]);
   const raycasterRef = useRef(new THREE.Raycaster());
   const mouseRef = useRef(new THREE.Vector2());
+  const is2DModeRef = useRef(false); // クロージャ問題解決用
 
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
@@ -167,11 +168,11 @@ export const IFCViewer: React.FC = () => {
       const gridHelper = new THREE.GridHelper(100, 100, 0x888888, 0xcccccc);
       scene.add(gridHelper);
 
-      // アニメーションループ
+      // アニメーションループ（refを使用してis2DModeの最新値を参照）
       const animate = () => {
         requestAnimationFrame(animate);
         controls.update();
-        const currentCamera = is2DMode ? orthographicCamera : perspectiveCamera;
+        const currentCamera = is2DModeRef.current ? orthographicCamera : perspectiveCamera;
         renderer.render(scene, currentCamera);
       };
       animate();
@@ -252,7 +253,21 @@ export const IFCViewer: React.FC = () => {
 
   // スペースメッシュの作成
   useEffect(() => {
-    console.log('IFCViewer: filteredSpacesの更新検知', { spacesCount: filteredSpaces.length, sceneReady: !!sceneRef.current });
+    console.log('IFCViewer: filteredSpacesの更新検知', {
+      spacesCount: filteredSpaces.length,
+      sceneReady: !!sceneRef.current,
+      firstSpace: filteredSpaces[0] ? {
+        id: filteredSpaces[0].id,
+        name: filteredSpaces[0].name,
+        hasGeometry: !!filteredSpaces[0].geometry,
+        hasVertices: filteredSpaces[0].geometry?.vertices?.length || 0,
+        hasIndices: filteredSpaces[0].geometry?.indices?.length || 0,
+        hasBoundingBox: !!filteredSpaces[0].geometry?.boundingBox,
+        area: filteredSpaces[0].area,
+        height: filteredSpaces[0].height,
+        location: filteredSpaces[0].location,
+      } : null
+    });
 
     if (!sceneRef.current) {
       console.log('IFCViewer: シーンが未初期化');
@@ -297,25 +312,54 @@ export const IFCViewer: React.FC = () => {
       });
     };
 
-    const updateBoundsFromBox = (box: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }) => {
-      updateBounds([
-        new THREE.Vector3(box.min.x, box.min.z, box.min.y),
-        new THREE.Vector3(box.max.x, box.max.z, box.max.y),
-      ]);
-    };
-
-    const createBoxMesh = (space: typeof filteredSpaces[number]) => {
+    const createBoxMesh = (space: typeof filteredSpaces[number], index: number) => {
       const geometryData = space.geometry?.boundingBox;
       const hasBoundingBox = Boolean(geometryData?.min && geometryData?.max);
 
-      const fallbackSize = Math.sqrt(space.area || 25) || 5;
-      const bboxWidth = hasBoundingBox ? geometryData!.max.x - geometryData!.min.x : null;
-      const bboxDepth = hasBoundingBox ? geometryData!.max.y - geometryData!.min.y : null;
-      const bboxHeight = hasBoundingBox ? geometryData!.max.z - geometryData!.min.z : null;
+      // 面積からサイズを推定（最低5mを確保）
+      const fallbackSize = Math.max(Math.sqrt(space.area || 25), 5);
 
-      const width = bboxWidth && bboxWidth > 0 ? bboxWidth : fallbackSize;
-      const depth = bboxDepth && bboxDepth > 0 ? bboxDepth : fallbackSize;
-      const height = bboxHeight && bboxHeight > 0 ? bboxHeight : space.height || 3;
+      let width: number, depth: number, height: number;
+      let centerX: number, centerY: number, centerZ: number;
+
+      if (hasBoundingBox) {
+        // バウンディングボックスからサイズを計算
+        width = Math.abs(geometryData!.max.x - geometryData!.min.x) || fallbackSize;
+        depth = Math.abs(geometryData!.max.y - geometryData!.min.y) || fallbackSize;
+        height = Math.abs(geometryData!.max.z - geometryData!.min.z) || space.height || 3;
+
+        // IFC座標系からThree.js座標系への変換 (x, y, z) -> (x, z, y)
+        centerX = (geometryData!.min.x + geometryData!.max.x) / 2;
+        centerY = (geometryData!.min.z + geometryData!.max.z) / 2; // IFCのzがThree.jsのy
+        centerZ = (geometryData!.min.y + geometryData!.max.y) / 2; // IFCのyがThree.jsのz
+
+        console.log(`IFCViewer: createBoxMesh[${index}] バウンディングボックス使用:`, {
+          bbox: geometryData,
+          size: { width, depth, height },
+          center: { x: centerX, y: centerY, z: centerZ }
+        });
+      } else {
+        // 位置情報とフォールバックサイズを使用
+        width = fallbackSize;
+        depth = fallbackSize;
+        height = space.height || 3;
+
+        const location = space.location;
+        centerX = location?.x ?? (index * 10); // スペースがない場合は横に並べる
+        centerY = (location?.z ?? 0) + height / 2; // IFCのzがThree.jsのy
+        centerZ = location?.y ?? 0; // IFCのyがThree.jsのz
+
+        console.log(`IFCViewer: createBoxMesh[${index}] フォールバック使用:`, {
+          location: space.location,
+          size: { width, depth, height },
+          center: { x: centerX, y: centerY, z: centerZ }
+        });
+      }
+
+      // 最小サイズを確保
+      width = Math.max(width, 0.1);
+      depth = Math.max(depth, 0.1);
+      height = Math.max(height, 0.1);
 
       const geometry = new THREE.BoxGeometry(width, height, depth);
       const material = new THREE.MeshPhongMaterial({
@@ -326,25 +370,13 @@ export const IFCViewer: React.FC = () => {
       });
 
       const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(centerX, centerY, centerZ);
 
-      if (hasBoundingBox) {
-        const bboxCenterX = (geometryData!.min.x + geometryData!.max.x) / 2;
-        const bboxCenterY = (geometryData!.min.z + geometryData!.max.z) / 2;
-        const bboxCenterZ = (geometryData!.min.y + geometryData!.max.y) / 2;
-        mesh.position.set(bboxCenterX, bboxCenterY, bboxCenterZ);
-        updateBoundsFromBox(geometryData!);
-      } else {
-        const location = space.location;
-        const centerX = location?.x ?? 0;
-        const centerY = location?.z ?? 0;
-        const centerZ = location?.y ?? 0;
-        mesh.position.set(centerX, centerY + height / 2, centerZ);
-        const pos = mesh.position;
-        updateBounds([
-          new THREE.Vector3(pos.x - width / 2, pos.y - height / 2, pos.z - depth / 2),
-          new THREE.Vector3(pos.x + width / 2, pos.y + height / 2, pos.z + depth / 2),
-        ]);
-      }
+      // バウンズを更新
+      updateBounds([
+        new THREE.Vector3(centerX - width / 2, centerY - height / 2, centerZ - depth / 2),
+        new THREE.Vector3(centerX + width / 2, centerY + height / 2, centerZ + depth / 2),
+      ]);
 
       return mesh;
     };
@@ -373,6 +405,7 @@ export const IFCViewer: React.FC = () => {
       if (geometryVertices && geometryVertices.length >= 3 && geometryIndices && geometryIndices.length >= 3) {
         // パターン1: BufferGeometry（インデックス付き完全なメッシュ）
         try {
+          // IFC座標系からThree.js座標系への変換 (x, y, z) -> (x, z, y)
           const positions = geometryVertices.flatMap(([x, y, z]) => [x, z, y]);
           const bufferGeometry = new THREE.BufferGeometry();
           bufferGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -388,27 +421,30 @@ export const IFCViewer: React.FC = () => {
 
           mesh = new THREE.Mesh(bufferGeometry, material);
 
-          if (space.geometry?.boundingBox) {
-            updateBoundsFromBox(space.geometry.boundingBox);
-          } else {
-            bufferGeometry.computeBoundingBox();
-            if (bufferGeometry.boundingBox) {
-              updateBounds([
-                bufferGeometry.boundingBox.min,
-                bufferGeometry.boundingBox.max,
-              ]);
-            }
+          // バウンディングボックスの更新
+          bufferGeometry.computeBoundingBox();
+          if (bufferGeometry.boundingBox) {
+            updateBounds([
+              bufferGeometry.boundingBox.min,
+              bufferGeometry.boundingBox.max,
+            ]);
           }
-          console.log(`IFCViewer: スペース[${index}] BufferGeometry作成成功`);
+
+          console.log(`IFCViewer: スペース[${index}] BufferGeometry作成成功`, {
+            vertexCount: geometryVertices.length,
+            indexCount: geometryIndices.length,
+            boundingBox: bufferGeometry.boundingBox
+          });
         } catch (error) {
           console.error(`IFCViewer: スペース[${index}] BufferGeometry作成エラー:`, error);
-          mesh = createBoxMesh(space);
+          mesh = createBoxMesh(space, index);
         }
       } else if (geometryVertices && geometryVertices.length >= 3 && isPlanarFootprint(geometryVertices)) {
         // パターン2: ExtrudeGeometry（平面フットプリント）
         try {
+          // IFC座標系からThree.js座標系に変換 (x, y, z) -> (x, z, y)
           const vertices = geometryVertices.map(v =>
-            new THREE.Vector3(v[0], v[2], v[1]) // IFC座標系からThree.js座標系に変換 (x, z, y)
+            new THREE.Vector3(v[0], v[2], v[1])
           );
 
           const height = space.height || 3;
@@ -442,15 +478,23 @@ export const IFCViewer: React.FC = () => {
           mesh.rotation.x = -Math.PI / 2;
 
           updateBounds(vertices);
-          console.log(`IFCViewer: スペース[${index}] ExtrudeGeometry作成成功`);
+          console.log(`IFCViewer: スペース[${index}] ExtrudeGeometry作成成功`, {
+            vertexCount: geometryVertices.length,
+            height
+          });
         } catch (error) {
           console.error(`IFCViewer: スペース[${index}] ExtrudeGeometry作成エラー:`, error);
-          mesh = createBoxMesh(space);
+          mesh = createBoxMesh(space, index);
         }
       } else {
         // パターン3: BoxGeometry（フォールバック）
-        console.log(`IFCViewer: スペース[${index}] BoxGeometry使用（フォールバック）`);
-        mesh = createBoxMesh(space);
+        console.log(`IFCViewer: スペース[${index}] BoxGeometry使用（フォールバック）`, {
+          hasGeometry: !!space.geometry,
+          hasVertices: geometryVertices?.length || 0,
+          hasIndices: geometryIndices?.length || 0,
+          hasBoundingBox: !!space.geometry?.boundingBox
+        });
+        mesh = createBoxMesh(space, index);
       }
 
       mesh.userData = { spaceId: space.id };
@@ -467,24 +511,65 @@ export const IFCViewer: React.FC = () => {
 
     // カメラ位置を調整
     if (perspectiveCameraRef.current && orthographicCameraRef.current && controlsRef.current && spaceMeshesRef.current.length > 0) {
-      const center = boundsMin.clone().add(boundsMax).multiplyScalar(0.5);
-      const size = boundsMax.clone().sub(boundsMin);
-      const maxDimension = Math.max(size.x, size.y, size.z, 10);
-      const distance = maxDimension * 1.5;
+      // バウンズが有効かどうかをチェック
+      const boundsValid =
+        isFinite(boundsMin.x) && isFinite(boundsMax.x) &&
+        isFinite(boundsMin.y) && isFinite(boundsMax.y) &&
+        isFinite(boundsMin.z) && isFinite(boundsMax.z);
+
+      let center: THREE.Vector3;
+      let maxDimension: number;
+
+      if (boundsValid) {
+        center = boundsMin.clone().add(boundsMax).multiplyScalar(0.5);
+        const size = boundsMax.clone().sub(boundsMin);
+        maxDimension = Math.max(size.x, size.y, size.z, 10);
+      } else {
+        // バウンズが無効な場合はデフォルト位置
+        center = new THREE.Vector3(0, 0, 0);
+        maxDimension = 30;
+        console.warn('IFCViewer: バウンズが無効なためデフォルト位置を使用');
+      }
+
+      const distance = maxDimension * 2;
 
       // 3Dカメラの位置設定
-      perspectiveCameraRef.current.position.set(center.x + distance, center.y + distance, center.z + distance);
+      perspectiveCameraRef.current.position.set(
+        center.x + distance,
+        center.y + distance,
+        center.z + distance
+      );
+      perspectiveCameraRef.current.lookAt(center);
 
       // 2Dカメラの位置設定（真上から）
       orthographicCameraRef.current.position.set(center.x, center.y + distance, center.z);
       orthographicCameraRef.current.lookAt(center);
 
+      // オルソグラフィックカメラのサイズ調整
+      const aspect = containerRef.current ? containerRef.current.clientWidth / containerRef.current.clientHeight : 1;
+      const frustumSize = maxDimension * 1.5;
+      orthographicCameraRef.current.left = (frustumSize * aspect) / -2;
+      orthographicCameraRef.current.right = (frustumSize * aspect) / 2;
+      orthographicCameraRef.current.top = frustumSize / 2;
+      orthographicCameraRef.current.bottom = frustumSize / -2;
+      orthographicCameraRef.current.updateProjectionMatrix();
+
       controlsRef.current.target.copy(center);
+      controlsRef.current.update();
+
+      console.log('IFCViewer: カメラ位置調整完了', {
+        center: center.toArray(),
+        distance,
+        maxDimension
+      });
     }
   }, [filteredSpaces]);
 
   // 2D/3D モード切り替え
   useEffect(() => {
+    // refを更新（アニメーションループで使用）
+    is2DModeRef.current = is2DMode;
+
     if (!controlsRef.current || !perspectiveCameraRef.current || !orthographicCameraRef.current) return;
 
     const controls = controlsRef.current;
