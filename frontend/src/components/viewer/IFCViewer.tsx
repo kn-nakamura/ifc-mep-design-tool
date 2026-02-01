@@ -4,10 +4,84 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { useIFCStore } from '@/store/ifcStore';
 import { useCalculationStore } from '@/store/calculationStore';
 
+/**
+ * 異なる色のセットを生成
+ */
+function generateColors(count: number): number[] {
+  const colors: number[] = [];
+  const predefinedColors = [
+    0x3498db, // 青
+    0xe74c3c, // 赤
+    0x2ecc71, // 緑
+    0xf39c12, // オレンジ
+    0x9b59b6, // 紫
+    0x1abc9c, // ターコイズ
+    0xe67e22, // キャロット
+    0x34495e, // ダークグレー
+    0x16a085, // グリーンシー
+    0xc0392b, // ポメグラネイト
+    0x2980b9, // ベルフラワー
+    0x8e44ad, // ウィステリア
+  ];
+
+  for (let i = 0; i < count; i++) {
+    if (i < predefinedColors.length) {
+      colors.push(predefinedColors[i]);
+    } else {
+      // 追加の色をHSLで生成
+      const hue = (i * 137.508) % 360; // ゴールデンアングルで分散
+      const saturation = 70;
+      const lightness = 50;
+      colors.push(hslToHex(hue, saturation, lightness));
+    }
+  }
+
+  return colors;
+}
+
+/**
+ * HSLをHEX色に変換
+ */
+function hslToHex(h: number, s: number, l: number): number {
+  const hNorm = h / 360;
+  const sNorm = s / 100;
+  const lNorm = l / 100;
+
+  let r, g, b;
+
+  if (s === 0) {
+    r = g = b = lNorm;
+  } else {
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+
+    const q = lNorm < 0.5 ? lNorm * (1 + sNorm) : lNorm + sNorm - lNorm * sNorm;
+    const p = 2 * lNorm - q;
+
+    r = hue2rgb(p, q, hNorm + 1 / 3);
+    g = hue2rgb(p, q, hNorm);
+    b = hue2rgb(p, q, hNorm - 1 / 3);
+  }
+
+  const toHex = (x: number) => {
+    const hex = Math.round(x * 255).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  };
+
+  return parseInt(toHex(r) + toHex(g) + toHex(b), 16);
+}
+
 export const IFCViewer: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const perspectiveCameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const orthographicCameraRef = useRef<THREE.OrthographicCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const spaceMeshesRef = useRef<THREE.Mesh[]>([]);
@@ -16,11 +90,15 @@ export const IFCViewer: React.FC = () => {
 
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
+  const [is2DMode, setIs2DMode] = useState(false);
+  const [viewScale, setViewScale] = useState(1);
 
   const filteredSpaces = useIFCStore((state) => state.filteredSpaces());
   const selectedSpaceIds = useIFCStore((state) => state.selectedSpaceIds);
   const toggleSelectedSpaceId = useIFCStore((state) => state.toggleSelectedSpaceId);
   const setSelectedSpaceIds = useIFCStore((state) => state.setSelectedSpaceIds);
+  const colorByProperty = useIFCStore((state) => state.colorByProperty);
+  const availablePropertyValues = useIFCStore((state) => state.availablePropertyValues);
   const ventilationResults = useCalculationStore((state) => state.ventilationResults);
 
   // シーンの初期化
@@ -41,15 +119,30 @@ export const IFCViewer: React.FC = () => {
       scene.background = new THREE.Color(0xf0f0f0);
       sceneRef.current = scene;
 
-      // カメラ
-      const camera = new THREE.PerspectiveCamera(
+      // パースペクティブカメラ
+      const perspectiveCamera = new THREE.PerspectiveCamera(
         75,
         containerRef.current.clientWidth / containerRef.current.clientHeight,
         0.1,
         1000
       );
-      camera.position.set(30, 30, 30);
-      cameraRef.current = camera;
+      perspectiveCamera.position.set(30, 30, 30);
+      perspectiveCameraRef.current = perspectiveCamera;
+
+      // オルソグラフィックカメラ（2Dビュー用）
+      const aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
+      const frustumSize = 50;
+      const orthographicCamera = new THREE.OrthographicCamera(
+        (frustumSize * aspect) / -2,
+        (frustumSize * aspect) / 2,
+        frustumSize / 2,
+        frustumSize / -2,
+        0.1,
+        1000
+      );
+      orthographicCamera.position.set(0, 100, 0);
+      orthographicCamera.lookAt(0, 0, 0);
+      orthographicCameraRef.current = orthographicCamera;
 
       // レンダラー
       const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -57,8 +150,8 @@ export const IFCViewer: React.FC = () => {
       containerRef.current.appendChild(renderer.domElement);
       rendererRef.current = renderer;
 
-      // コントロール
-      const controls = new OrbitControls(camera, renderer.domElement);
+      // コントロール（初期はパースペクティブカメラ）
+      const controls = new OrbitControls(perspectiveCamera, renderer.domElement);
       controls.enableDamping = true;
       controls.dampingFactor = 0.05;
       controlsRef.current = controls;
@@ -79,19 +172,22 @@ export const IFCViewer: React.FC = () => {
       const animate = () => {
         requestAnimationFrame(animate);
         controls.update();
-        renderer.render(scene, camera);
+        const currentCamera = is2DMode ? orthographicCamera : perspectiveCamera;
+        renderer.render(scene, currentCamera);
       };
       animate();
 
       // クリックハンドラー
       const handleClick = (event: MouseEvent) => {
-        if (!containerRef.current || !cameraRef.current) return;
+        if (!containerRef.current) return;
+        const currentCamera = is2DMode ? orthographicCameraRef.current : perspectiveCameraRef.current;
+        if (!currentCamera) return;
 
         const rect = renderer.domElement.getBoundingClientRect();
         mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-        raycasterRef.current.setFromCamera(mouseRef.current, cameraRef.current);
+        raycasterRef.current.setFromCamera(mouseRef.current, currentCamera);
         const intersects = raycasterRef.current.intersectObjects(spaceMeshesRef.current);
 
         if (intersects.length > 0) {
@@ -116,10 +212,22 @@ export const IFCViewer: React.FC = () => {
 
       // リサイズハンドラー
       const handleResize = () => {
-        if (!containerRef.current || !camera || !renderer) return;
+        if (!containerRef.current || !perspectiveCamera || !orthographicCamera || !renderer) return;
 
-        camera.aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
-        camera.updateProjectionMatrix();
+        const aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
+
+        // パースペクティブカメラの更新
+        perspectiveCamera.aspect = aspect;
+        perspectiveCamera.updateProjectionMatrix();
+
+        // オルソグラフィックカメラの更新
+        const frustumSize = 50;
+        orthographicCamera.left = (frustumSize * aspect) / -2;
+        orthographicCamera.right = (frustumSize * aspect) / 2;
+        orthographicCamera.top = frustumSize / 2;
+        orthographicCamera.bottom = frustumSize / -2;
+        orthographicCamera.updateProjectionMatrix();
+
         renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
       };
 
@@ -254,76 +362,95 @@ export const IFCViewer: React.FC = () => {
     };
 
     // スペースごとにメッシュを作成（実際の形状を使用）
-    filteredSpaces.forEach((space) => {
+    filteredSpaces.forEach((space, index) => {
       let mesh: THREE.Mesh;
 
       const geometryVertices = space.geometry?.vertices;
       const geometryIndices = space.geometry?.indices;
+      const hasBoundingBox = Boolean(space.geometry?.boundingBox);
+
+      console.log(`IFCViewer: スペース[${index}] ${space.name} (ID: ${space.id}) - vertices: ${geometryVertices?.length || 0}, indices: ${geometryIndices?.length || 0}, bbox: ${hasBoundingBox}`);
 
       if (geometryVertices && geometryVertices.length >= 3 && geometryIndices && geometryIndices.length >= 3) {
-        const positions = geometryVertices.flatMap(([x, y, z]) => [x, z, y]);
-        const bufferGeometry = new THREE.BufferGeometry();
-        bufferGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        bufferGeometry.setIndex(geometryIndices);
-        bufferGeometry.computeVertexNormals();
+        // パターン1: BufferGeometry（インデックス付き完全なメッシュ）
+        try {
+          const positions = geometryVertices.flatMap(([x, y, z]) => [x, z, y]);
+          const bufferGeometry = new THREE.BufferGeometry();
+          bufferGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+          bufferGeometry.setIndex(geometryIndices);
+          bufferGeometry.computeVertexNormals();
 
-        const material = new THREE.MeshPhongMaterial({
-          color: 0x88ccff,
-          transparent: true,
-          opacity: 0.7,
-          side: THREE.DoubleSide,
-        });
+          const material = new THREE.MeshPhongMaterial({
+            color: 0x88ccff,
+            transparent: true,
+            opacity: 0.7,
+            side: THREE.DoubleSide,
+          });
 
-        mesh = new THREE.Mesh(bufferGeometry, material);
+          mesh = new THREE.Mesh(bufferGeometry, material);
 
-        if (space.geometry?.boundingBox) {
-          updateBoundsFromBox(space.geometry.boundingBox);
-        } else {
-          bufferGeometry.computeBoundingBox();
-          if (bufferGeometry.boundingBox) {
-            updateBounds([
-              bufferGeometry.boundingBox.min,
-              bufferGeometry.boundingBox.max,
-            ]);
+          if (space.geometry?.boundingBox) {
+            updateBoundsFromBox(space.geometry.boundingBox);
+          } else {
+            bufferGeometry.computeBoundingBox();
+            if (bufferGeometry.boundingBox) {
+              updateBounds([
+                bufferGeometry.boundingBox.min,
+                bufferGeometry.boundingBox.max,
+              ]);
+            }
           }
+          console.log(`IFCViewer: スペース[${index}] BufferGeometry作成成功`);
+        } catch (error) {
+          console.error(`IFCViewer: スペース[${index}] BufferGeometry作成エラー:`, error);
+          mesh = createBoxMesh(space);
         }
       } else if (geometryVertices && geometryVertices.length >= 3 && isPlanarFootprint(geometryVertices)) {
-        const vertices = geometryVertices.map(v =>
-          new THREE.Vector3(v[0], v[2], v[1]) // IFC座標系からThree.js座標系に変換 (x, z, y)
-        );
+        // パターン2: ExtrudeGeometry（平面フットプリント）
+        try {
+          const vertices = geometryVertices.map(v =>
+            new THREE.Vector3(v[0], v[2], v[1]) // IFC座標系からThree.js座標系に変換 (x, z, y)
+          );
 
-        const height = space.height || 3;
+          const height = space.height || 3;
 
-        const shape = new THREE.Shape();
-        if (vertices.length > 0) {
-          shape.moveTo(vertices[0].x, vertices[0].z);
-          for (let i = 1; i < vertices.length; i++) {
-            shape.lineTo(vertices[i].x, vertices[i].z);
+          const shape = new THREE.Shape();
+          if (vertices.length > 0) {
+            shape.moveTo(vertices[0].x, vertices[0].z);
+            for (let i = 1; i < vertices.length; i++) {
+              shape.lineTo(vertices[i].x, vertices[i].z);
+            }
+            shape.closePath();
           }
-          shape.closePath();
+
+          const extrudeSettings = {
+            depth: height,
+            bevelEnabled: false,
+          };
+
+          const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+          const material = new THREE.MeshPhongMaterial({
+            color: 0x88ccff,
+            transparent: true,
+            opacity: 0.7,
+            side: THREE.DoubleSide,
+          });
+
+          mesh = new THREE.Mesh(geometry, material);
+
+          const baseY = space.location?.z ?? 0;
+          mesh.position.set(0, baseY, 0);
+          mesh.rotation.x = -Math.PI / 2;
+
+          updateBounds(vertices);
+          console.log(`IFCViewer: スペース[${index}] ExtrudeGeometry作成成功`);
+        } catch (error) {
+          console.error(`IFCViewer: スペース[${index}] ExtrudeGeometry作成エラー:`, error);
+          mesh = createBoxMesh(space);
         }
-
-        const extrudeSettings = {
-          depth: height,
-          bevelEnabled: false,
-        };
-
-        const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-        const material = new THREE.MeshPhongMaterial({
-          color: 0x88ccff,
-          transparent: true,
-          opacity: 0.7,
-          side: THREE.DoubleSide,
-        });
-
-        mesh = new THREE.Mesh(geometry, material);
-
-        const baseY = space.location?.z ?? 0;
-        mesh.position.set(0, baseY, 0);
-        mesh.rotation.x = -Math.PI / 2;
-
-        updateBounds(vertices);
       } else {
+        // パターン3: BoxGeometry（フォールバック）
+        console.log(`IFCViewer: スペース[${index}] BoxGeometry使用（フォールバック）`);
         mesh = createBoxMesh(space);
       }
 
@@ -333,37 +460,95 @@ export const IFCViewer: React.FC = () => {
       spaceMeshesRef.current.push(mesh);
     });
 
-    console.log('IFCViewer: メッシュ作成完了', { count: spaceMeshesRef.current.length });
+    console.log('IFCViewer: メッシュ作成完了', {
+      total: spaceMeshesRef.current.length,
+      filteredSpaces: filteredSpaces.length,
+      bounds: { min: boundsMin.toArray(), max: boundsMax.toArray() }
+    });
 
     // カメラ位置を調整
-    if (cameraRef.current && controlsRef.current && spaceMeshesRef.current.length > 0) {
+    if (perspectiveCameraRef.current && orthographicCameraRef.current && controlsRef.current && spaceMeshesRef.current.length > 0) {
       const center = boundsMin.clone().add(boundsMax).multiplyScalar(0.5);
       const size = boundsMax.clone().sub(boundsMin);
       const maxDimension = Math.max(size.x, size.y, size.z, 10);
       const distance = maxDimension * 1.5;
 
-      cameraRef.current.position.set(center.x + distance, center.y + distance, center.z + distance);
+      // 3Dカメラの位置設定
+      perspectiveCameraRef.current.position.set(center.x + distance, center.y + distance, center.z + distance);
+
+      // 2Dカメラの位置設定（真上から）
+      orthographicCameraRef.current.position.set(center.x, center.y + distance, center.z);
+      orthographicCameraRef.current.lookAt(center);
+
       controlsRef.current.target.copy(center);
     }
   }, [filteredSpaces]);
 
+  // 2D/3D モード切り替え
+  useEffect(() => {
+    if (!controlsRef.current || !perspectiveCameraRef.current || !orthographicCameraRef.current) return;
+
+    const controls = controlsRef.current;
+
+    if (is2DMode) {
+      // 2Dモード: オルソグラフィックカメラに切り替え
+      (controls as any).object = orthographicCameraRef.current;
+      controls.enableRotate = false; // 回転を無効化
+      controls.maxPolarAngle = 0; // 真上のみ
+      controls.minPolarAngle = 0;
+    } else {
+      // 3Dモード: パースペクティブカメラに切り替え
+      (controls as any).object = perspectiveCameraRef.current;
+      controls.enableRotate = true; // 回転を有効化
+      controls.maxPolarAngle = Math.PI; // 制限を解除
+      controls.minPolarAngle = 0;
+    }
+
+    controls.update();
+  }, [is2DMode]);
+
   // 選択状態とハイライトの更新
   useEffect(() => {
+    // パラメーター値に基づく色のマッピングを作成
+    const colorMap = new Map<string, number>();
+    if (colorByProperty) {
+      const values = availablePropertyValues(colorByProperty);
+      const colors = generateColors(values.length);
+      values.forEach((value, index) => {
+        colorMap.set(value, colors[index]);
+      });
+    }
+
     spaceMeshesRef.current.forEach((mesh) => {
       const spaceId = mesh.userData.spaceId;
       const material = mesh.material as THREE.MeshPhongMaterial;
 
-      // 計算結果に基づく色設定
-      const result = ventilationResults[spaceId];
+      // 色の優先順位: 選択状態 > パラメーター色分け > 換気計算結果 > デフォルト
       let color = 0x88ccff; // デフォルト色
 
-      if (result) {
-        if (result.complianceStatus === 'OK') {
-          color = 0x2ecc71; // 緑
-        } else if (result.complianceStatus === 'NG') {
-          color = 0xe74c3c; // 赤
-        } else if (result.complianceStatus === 'WARNING') {
-          color = 0xf39c12; // オレンジ
+      // パラメーターに基づく色分け
+      if (colorByProperty) {
+        const space = filteredSpaces.find(s => s.id === spaceId);
+        if (space) {
+          const propValue = space.properties[colorByProperty];
+          if (propValue !== undefined && propValue !== null) {
+            const mappedColor = colorMap.get(String(propValue));
+            if (mappedColor !== undefined) {
+              color = mappedColor;
+            }
+          }
+        }
+      } else {
+        // 換気計算結果に基づく色設定
+        const result = ventilationResults[spaceId];
+        if (result) {
+          if (result.complianceStatus === 'OK') {
+            color = 0x2ecc71; // 緑
+          } else if (result.complianceStatus === 'NG') {
+            color = 0xe74c3c; // 赤
+          } else if (result.complianceStatus === 'WARNING') {
+            color = 0xf39c12; // オレンジ
+          }
         }
       }
 
@@ -376,7 +561,7 @@ export const IFCViewer: React.FC = () => {
         material.opacity = 0.7;
       }
     });
-  }, [selectedSpaceIds, ventilationResults]);
+  }, [selectedSpaceIds, ventilationResults, colorByProperty, filteredSpaces, availablePropertyValues]);
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -481,11 +666,68 @@ export const IFCViewer: React.FC = () => {
         }}
       >
         <div><strong>操作方法</strong></div>
-        <div>左ドラッグ: 回転</div>
-        <div>右ドラッグ: 移動</div>
-        <div>ホイール: ズーム</div>
+        {is2DMode ? (
+          <>
+            <div>ドラッグ: 移動</div>
+            <div>ホイール: ズーム</div>
+          </>
+        ) : (
+          <>
+            <div>左ドラッグ: 回転</div>
+            <div>右ドラッグ: 移動</div>
+            <div>ホイール: ズーム</div>
+          </>
+        )}
         <div>クリック: スペース選択</div>
       </div>
+
+      {/* 2D/3D切り替えボタン */}
+      {isInitialized && !initError && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '16px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            gap: '4px',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            padding: '4px',
+            borderRadius: '6px',
+          }}
+        >
+          <button
+            onClick={() => setIs2DMode(false)}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: !is2DMode ? '#3498db' : 'transparent',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              fontWeight: !is2DMode ? 'bold' : 'normal',
+            }}
+          >
+            3D
+          </button>
+          <button
+            onClick={() => setIs2DMode(true)}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: is2DMode ? '#3498db' : 'transparent',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              fontWeight: is2DMode ? 'bold' : 'normal',
+            }}
+          >
+            2D
+          </button>
+        </div>
+      )}
 
       {/* スペース数表示 */}
       {filteredSpaces.length > 0 && (

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-type ActivePanel = 'spaces' | 'properties' | 'calculation' | 'filter' | null;
+type ActivePanel = 'spaces' | 'properties' | 'calculation' | 'filter' | 'export-import' | 'grouping' | null;
 
 interface UIStore {
   activePanel: ActivePanel;

@@ -15,7 +15,10 @@
     "three": "^0.160.0",
     "web-ifc": "^0.0.51",
     "zustand": "^4.4.7",
-    "axios": "^1.6.5"
+    "axios": "^1.6.5",
+    "xlsx": "^0.18.5",
+    "jspdf": "^2.5.1",
+    "html2canvas": "^1.4.1"
   },
   "devDependencies": {
     "@types/react": "^18.2.48",

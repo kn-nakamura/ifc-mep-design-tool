@@ -6,6 +6,8 @@ import { SpaceListPanel } from '../panels/SpaceListPanel';
 import { PropertyPanel } from '../panels/PropertyPanel';
 import { CalculationPanel } from '../panels/CalculationPanel';
 import { FilterPanel } from '../panels/FilterPanel';
+import { ExportImportPanel } from '../panels/ExportImportPanel';
+import { GroupingPanel } from '../panels/GroupingPanel';
 
 interface SidebarProps {
   width: number;
@@ -82,6 +84,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ width }) => {
       {modelId && (
         <div
           className="app-sidebar-tabs"
+          style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}
         >
           <TabButton
             active={activePanel === 'spaces'}
@@ -96,10 +99,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ width }) => {
             フィルター
           </TabButton>
           <TabButton
+            active={activePanel === 'grouping'}
+            onClick={() => setActivePanel('grouping')}
+          >
+            グルーピング
+          </TabButton>
+          <TabButton
             active={activePanel === 'properties'}
             onClick={() => setActivePanel('properties')}
           >
             プロパティ
+          </TabButton>
+          <TabButton
+            active={activePanel === 'export-import'}
+            onClick={() => setActivePanel('export-import')}
+          >
+            エクスポート/インポート
           </TabButton>
           <TabButton
             active={activePanel === 'calculation'}
@@ -198,7 +213,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ width }) => {
 
             {activePanel === 'spaces' && <SpaceListPanel />}
             {activePanel === 'filter' && <FilterPanel />}
+            {activePanel === 'grouping' && <GroupingPanel />}
             {activePanel === 'properties' && <PropertyPanel />}
+            {activePanel === 'export-import' && <ExportImportPanel />}
             {activePanel === 'calculation' && <CalculationPanel />}
           </>
         )}
