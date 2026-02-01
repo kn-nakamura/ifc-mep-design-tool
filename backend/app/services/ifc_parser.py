@@ -1,4 +1,5 @@
 import ifcopenshell
+import ifcopenshell.geom
 import ifcopenshell.util.element
 import ifcopenshell.util.unit
 from typing import List, Dict, Any, Optional, Tuple
@@ -218,10 +219,37 @@ class IFCParserService:
     def _get_simple_geometry(self, ifc_space) -> Optional[Geometry3D]:
         """簡易的なジオメトリ情報を取得（バウンディングボックス）"""
         try:
-            # 実装の簡略化のため、現時点ではNoneを返す
-            # 実際にはifcopenshell.geomを使用して形状を取得
-            # より高度な実装が必要な場合は後で追加
-            return None
+            settings = ifcopenshell.geom.settings()
+            settings.set(settings.USE_WORLD_COORDS, True)
+            shape = ifcopenshell.geom.create_shape(settings, ifc_space)
+
+            raw_vertices = getattr(shape.geometry, "verts", None)
+            if not raw_vertices:
+                return None
+
+            vertices: List[List[float]] = []
+            min_x = min_y = min_z = float("inf")
+            max_x = max_y = max_z = float("-inf")
+            scale = self.length_unit
+
+            for i in range(0, len(raw_vertices), 3):
+                x = float(raw_vertices[i]) * scale
+                y = float(raw_vertices[i + 1]) * scale
+                z = float(raw_vertices[i + 2]) * scale
+                vertices.append([x, y, z])
+                min_x = min(min_x, x)
+                min_y = min(min_y, y)
+                min_z = min(min_z, z)
+                max_x = max(max_x, x)
+                max_y = max(max_y, y)
+                max_z = max(max_z, z)
+
+            bounding_box = BoundingBox(
+                min=Point3D(x=min_x, y=min_y, z=min_z),
+                max=Point3D(x=max_x, y=max_y, z=max_z),
+            )
+
+            return Geometry3D(vertices=vertices, boundingBox=bounding_box)
         except Exception as e:
             logger.warning(f"ジオメトリ取得エラー: {e}")
             return None
