@@ -90,6 +90,7 @@ export const IFCViewer: React.FC = () => {
   const orthographicCameraRef = useRef<THREE.OrthographicCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const gridHelperRef = useRef<THREE.GridHelper | null>(null);
   const spaceMeshesRef = useRef<THREE.Mesh[]>([]);
   const fitBoundsRef = useRef<{ center: THREE.Vector3; maxDimension: number } | null>(null);
   const raycasterRef = useRef(new THREE.Raycaster());
@@ -210,6 +211,7 @@ export const IFCViewer: React.FC = () => {
       // グリッド
       const gridHelper = new THREE.GridHelper(GRID_SIZE, 100, 0x888888, 0xcccccc);
       scene.add(gridHelper);
+      gridHelperRef.current = gridHelper;
 
       // アニメーションループ（refを使用してis2DModeの最新値を参照）
       const animate = () => {
@@ -580,6 +582,12 @@ export const IFCViewer: React.FC = () => {
         center: center.toArray(),
         maxDimension
       });
+
+      if (gridHelperRef.current) {
+        const targetGridSize = Math.max(maxDimension * 2, 10);
+        const gridScale = targetGridSize / GRID_SIZE;
+        gridHelperRef.current.scale.set(gridScale, gridScale, gridScale);
+      }
     }
   }, [filteredSpaces]);
 
