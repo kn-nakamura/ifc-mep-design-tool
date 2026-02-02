@@ -77,6 +77,12 @@ function hslToHex(h: number, s: number, l: number): number {
   return parseInt(toHex(r) + toHex(g) + toHex(b), 16);
 }
 
+const MODEL_SCALE = 1000;
+const CAMERA_NEAR = 0.1 * MODEL_SCALE;
+const CAMERA_FAR = 1000 * MODEL_SCALE;
+const GRID_SIZE = 100 * MODEL_SCALE;
+const MIN_DIMENSION = 0.1 * MODEL_SCALE;
+
 export const IFCViewer: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -160,24 +166,24 @@ export const IFCViewer: React.FC = () => {
       const perspectiveCamera = new THREE.PerspectiveCamera(
         75,
         containerRef.current.clientWidth / containerRef.current.clientHeight,
-        0.1,
-        1000
+        CAMERA_NEAR,
+        CAMERA_FAR
       );
-      perspectiveCamera.position.set(30, 30, 30);
+      perspectiveCamera.position.set(30 * MODEL_SCALE, 30 * MODEL_SCALE, 30 * MODEL_SCALE);
       perspectiveCameraRef.current = perspectiveCamera;
 
       // オルソグラフィックカメラ（2Dビュー用）
       const aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
-      const frustumSize = 50;
+      const frustumSize = 50 * MODEL_SCALE;
       const orthographicCamera = new THREE.OrthographicCamera(
         (frustumSize * aspect) / -2,
         (frustumSize * aspect) / 2,
         frustumSize / 2,
         frustumSize / -2,
-        0.1,
-        1000
+        CAMERA_NEAR,
+        CAMERA_FAR
       );
-      orthographicCamera.position.set(0, 100, 0);
+      orthographicCamera.position.set(0, 100 * MODEL_SCALE, 0);
       orthographicCamera.lookAt(0, 0, 0);
       orthographicCameraRef.current = orthographicCamera;
 
@@ -202,7 +208,7 @@ export const IFCViewer: React.FC = () => {
       scene.add(directionalLight);
 
       // グリッド
-      const gridHelper = new THREE.GridHelper(100, 100, 0x888888, 0xcccccc);
+      const gridHelper = new THREE.GridHelper(GRID_SIZE, 100, 0x888888, 0xcccccc);
       scene.add(gridHelper);
 
       // アニメーションループ（refを使用してis2DModeの最新値を参照）
@@ -355,48 +361,49 @@ export const IFCViewer: React.FC = () => {
 
       // 面積からサイズを推定（最低5mを確保）
       const fallbackSize = Math.max(Math.sqrt(space.area || 25), 5);
+      const scaledFallbackSize = fallbackSize * MODEL_SCALE;
 
       let width: number, depth: number, height: number;
       let centerX: number, centerY: number, centerZ: number;
 
       if (hasBoundingBox) {
         // バウンディングボックスからサイズを計算
-        width = Math.abs(geometryData!.max.x - geometryData!.min.x) || fallbackSize;
-        depth = Math.abs(geometryData!.max.y - geometryData!.min.y) || fallbackSize;
-        height = Math.abs(geometryData!.max.z - geometryData!.min.z) || space.height || 3;
+        width = (Math.abs(geometryData!.max.x - geometryData!.min.x) || fallbackSize) * MODEL_SCALE;
+        depth = (Math.abs(geometryData!.max.y - geometryData!.min.y) || fallbackSize) * MODEL_SCALE;
+        height = (Math.abs(geometryData!.max.z - geometryData!.min.z) || space.height || 3) * MODEL_SCALE;
 
         // IFC座標系からThree.js座標系への変換 (x, y, z) -> (x, z, y)
-        centerX = (geometryData!.min.x + geometryData!.max.x) / 2;
-        centerY = (geometryData!.min.z + geometryData!.max.z) / 2; // IFCのzがThree.jsのy
-        centerZ = (geometryData!.min.y + geometryData!.max.y) / 2; // IFCのyがThree.jsのz
+        centerX = ((geometryData!.min.x + geometryData!.max.x) / 2) * MODEL_SCALE;
+        centerY = ((geometryData!.min.z + geometryData!.max.z) / 2) * MODEL_SCALE; // IFCのzがThree.jsのy
+        centerZ = ((geometryData!.min.y + geometryData!.max.y) / 2) * MODEL_SCALE; // IFCのyがThree.jsのz
 
         console.log(`IFCViewer: createBoxMesh[${index}] バウンディングボックス使用:`, {
           bbox: geometryData,
-          size: { width, depth, height },
-          center: { x: centerX, y: centerY, z: centerZ }
+          size: { width: width / MODEL_SCALE, depth: depth / MODEL_SCALE, height: height / MODEL_SCALE },
+          center: { x: centerX / MODEL_SCALE, y: centerY / MODEL_SCALE, z: centerZ / MODEL_SCALE }
         });
       } else {
         // 位置情報とフォールバックサイズを使用
-        width = fallbackSize;
-        depth = fallbackSize;
-        height = space.height || 3;
+        width = scaledFallbackSize;
+        depth = scaledFallbackSize;
+        height = (space.height || 3) * MODEL_SCALE;
 
         const location = space.location;
-        centerX = location?.x ?? (index * 10); // スペースがない場合は横に並べる
-        centerY = (location?.z ?? 0) + height / 2; // IFCのzがThree.jsのy
-        centerZ = location?.y ?? 0; // IFCのyがThree.jsのz
+        centerX = (location?.x ?? (index * 10)) * MODEL_SCALE; // スペースがない場合は横に並べる
+        centerY = ((location?.z ?? 0) * MODEL_SCALE) + height / 2; // IFCのzがThree.jsのy
+        centerZ = (location?.y ?? 0) * MODEL_SCALE; // IFCのyがThree.jsのz
 
         console.log(`IFCViewer: createBoxMesh[${index}] フォールバック使用:`, {
           location: space.location,
-          size: { width, depth, height },
-          center: { x: centerX, y: centerY, z: centerZ }
+          size: { width: width / MODEL_SCALE, depth: depth / MODEL_SCALE, height: height / MODEL_SCALE },
+          center: { x: centerX / MODEL_SCALE, y: centerY / MODEL_SCALE, z: centerZ / MODEL_SCALE }
         });
       }
 
       // 最小サイズを確保
-      width = Math.max(width, 0.1);
-      depth = Math.max(depth, 0.1);
-      height = Math.max(height, 0.1);
+      width = Math.max(width, MIN_DIMENSION);
+      depth = Math.max(depth, MIN_DIMENSION);
+      height = Math.max(height, MIN_DIMENSION);
 
       const geometry = new THREE.BoxGeometry(width, height, depth);
       const material = new THREE.MeshPhongMaterial({
@@ -443,7 +450,7 @@ export const IFCViewer: React.FC = () => {
         // パターン1: BufferGeometry（インデックス付き完全なメッシュ）
         try {
           // IFC座標系からThree.js座標系への変換 (x, y, z) -> (x, z, y)
-          const positions = geometryVertices.flatMap(([x, y, z]) => [x, z, y]);
+          const positions = geometryVertices.flatMap(([x, y, z]) => [x * MODEL_SCALE, z * MODEL_SCALE, y * MODEL_SCALE]);
           const bufferGeometry = new THREE.BufferGeometry();
           bufferGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
           bufferGeometry.setIndex(geometryIndices);
@@ -481,10 +488,10 @@ export const IFCViewer: React.FC = () => {
         try {
           // IFC座標系からThree.js座標系に変換 (x, y, z) -> (x, z, y)
           const vertices = geometryVertices.map(v =>
-            new THREE.Vector3(v[0], v[2], v[1])
+            new THREE.Vector3(v[0] * MODEL_SCALE, v[2] * MODEL_SCALE, v[1] * MODEL_SCALE)
           );
 
-          const height = space.height || 3;
+          const height = (space.height || 3) * MODEL_SCALE;
 
           const shape = new THREE.Shape();
           if (vertices.length > 0) {
@@ -510,7 +517,7 @@ export const IFCViewer: React.FC = () => {
 
           mesh = new THREE.Mesh(geometry, material);
 
-          const baseY = space.location?.z ?? 0;
+          const baseY = (space.location?.z ?? 0) * MODEL_SCALE;
           mesh.position.set(0, baseY, 0);
           mesh.rotation.x = -Math.PI / 2;
 
