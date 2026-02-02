@@ -77,7 +77,7 @@ function hslToHex(h: number, s: number, l: number): number {
   return parseInt(toHex(r) + toHex(g) + toHex(b), 16);
 }
 
-const MODEL_SCALE = 1000;
+const MODEL_SCALE = 1;
 const CAMERA_NEAR = 0.1 * MODEL_SCALE;
 const CAMERA_FAR = 1000 * MODEL_SCALE;
 const GRID_SIZE = 100 * MODEL_SCALE;
