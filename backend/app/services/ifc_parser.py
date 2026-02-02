@@ -23,9 +23,12 @@ class IFCParserService:
     def _get_length_unit(self) -> float:
         """長さ単位を取得（メートルへの変換係数を返す）"""
         try:
-            units = ifcopenshell.util.unit.get_project_unit(self.ifc_file, "LENGTHUNIT")
-            if units:
-                return ifcopenshell.util.unit.get_prefix_multiplier(units.Prefix) if hasattr(units, 'Prefix') else 1.0
+            # calculate_unit_scale returns the factor to convert from IFC units to SI units (meters)
+            # This properly handles all unit types including MILLIMETRE, FOOT, INCH, etc.
+            scale = ifcopenshell.util.unit.calculate_unit_scale(self.ifc_file)
+            if scale and scale > 0:
+                logger.info(f"IFC単位スケール: {scale} (IFC単位 → メートル)")
+                return scale
             return 1.0
         except Exception as e:
             logger.warning(f"単位の取得に失敗: {e}")
