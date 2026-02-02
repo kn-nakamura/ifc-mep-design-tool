@@ -85,6 +85,7 @@ export const IFCViewer: React.FC = () => {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const spaceMeshesRef = useRef<THREE.Mesh[]>([]);
+  const fitBoundsRef = useRef<{ center: THREE.Vector3; maxDimension: number } | null>(null);
   const raycasterRef = useRef(new THREE.Raycaster());
   const mouseRef = useRef(new THREE.Vector2());
   const is2DModeRef = useRef(false); // クロージャ問題解決用
@@ -100,6 +101,42 @@ export const IFCViewer: React.FC = () => {
   const colorByProperty = useIFCStore((state) => state.colorByProperty);
   const availablePropertyValues = useIFCStore((state) => state.availablePropertyValues);
   const ventilationResults = useCalculationStore((state) => state.ventilationResults);
+
+  const fitCameraToBounds = (center: THREE.Vector3, maxDimension: number) => {
+    if (!perspectiveCameraRef.current || !orthographicCameraRef.current || !controlsRef.current || !containerRef.current) {
+      return;
+    }
+
+    const perspectiveCamera = perspectiveCameraRef.current;
+    const orthographicCamera = orthographicCameraRef.current;
+    const controls = controlsRef.current;
+
+    const radius = Math.max(maxDimension / 2, 0.1);
+    const fovRadians = (perspectiveCamera.fov * Math.PI) / 180;
+    const distance = radius / Math.tan(fovRadians / 2);
+    const cameraDistance = distance * 1.4;
+
+    perspectiveCamera.position.set(
+      center.x + cameraDistance,
+      center.y + cameraDistance,
+      center.z + cameraDistance
+    );
+    perspectiveCamera.lookAt(center);
+
+    orthographicCamera.position.set(center.x, center.y + cameraDistance, center.z);
+    orthographicCamera.lookAt(center);
+
+    const aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
+    const frustumSize = maxDimension * 1.5;
+    orthographicCamera.left = (frustumSize * aspect) / -2;
+    orthographicCamera.right = (frustumSize * aspect) / 2;
+    orthographicCamera.top = frustumSize / 2;
+    orthographicCamera.bottom = frustumSize / -2;
+    orthographicCamera.updateProjectionMatrix();
+
+    controls.target.copy(center);
+    controls.update();
+  };
 
   // シーンの初期化
   useEffect(() => {
@@ -221,7 +258,7 @@ export const IFCViewer: React.FC = () => {
         perspectiveCamera.updateProjectionMatrix();
 
         // オルソグラフィックカメラの更新
-        const frustumSize = 50;
+        const frustumSize = fitBoundsRef.current ? fitBoundsRef.current.maxDimension * 1.5 : 50;
         orthographicCamera.left = (frustumSize * aspect) / -2;
         orthographicCamera.right = (frustumSize * aspect) / 2;
         orthographicCamera.top = frustumSize / 2;
@@ -510,8 +547,7 @@ export const IFCViewer: React.FC = () => {
     });
 
     // カメラ位置を調整
-    if (perspectiveCameraRef.current && orthographicCameraRef.current && controlsRef.current && spaceMeshesRef.current.length > 0) {
-      // バウンズが有効かどうかをチェック
+    if (spaceMeshesRef.current.length > 0) {
       const boundsValid =
         isFinite(boundsMin.x) && isFinite(boundsMax.x) &&
         isFinite(boundsMin.y) && isFinite(boundsMax.y) &&
@@ -525,41 +561,16 @@ export const IFCViewer: React.FC = () => {
         const size = boundsMax.clone().sub(boundsMin);
         maxDimension = Math.max(size.x, size.y, size.z, 10);
       } else {
-        // バウンズが無効な場合はデフォルト位置
         center = new THREE.Vector3(0, 0, 0);
         maxDimension = 30;
         console.warn('IFCViewer: バウンズが無効なためデフォルト位置を使用');
       }
 
-      const distance = maxDimension * 2;
-
-      // 3Dカメラの位置設定
-      perspectiveCameraRef.current.position.set(
-        center.x + distance,
-        center.y + distance,
-        center.z + distance
-      );
-      perspectiveCameraRef.current.lookAt(center);
-
-      // 2Dカメラの位置設定（真上から）
-      orthographicCameraRef.current.position.set(center.x, center.y + distance, center.z);
-      orthographicCameraRef.current.lookAt(center);
-
-      // オルソグラフィックカメラのサイズ調整
-      const aspect = containerRef.current ? containerRef.current.clientWidth / containerRef.current.clientHeight : 1;
-      const frustumSize = maxDimension * 1.5;
-      orthographicCameraRef.current.left = (frustumSize * aspect) / -2;
-      orthographicCameraRef.current.right = (frustumSize * aspect) / 2;
-      orthographicCameraRef.current.top = frustumSize / 2;
-      orthographicCameraRef.current.bottom = frustumSize / -2;
-      orthographicCameraRef.current.updateProjectionMatrix();
-
-      controlsRef.current.target.copy(center);
-      controlsRef.current.update();
+      fitBoundsRef.current = { center, maxDimension };
+      fitCameraToBounds(center, maxDimension);
 
       console.log('IFCViewer: カメラ位置調整完了', {
         center: center.toArray(),
-        distance,
         maxDimension
       });
     }
@@ -590,6 +601,11 @@ export const IFCViewer: React.FC = () => {
 
     controls.update();
   }, [is2DMode]);
+
+  const handleFitToView = () => {
+    if (!fitBoundsRef.current) return;
+    fitCameraToBounds(fitBoundsRef.current.center, fitBoundsRef.current.maxDimension);
+  };
 
   // 選択状態とハイライトの更新
   useEffect(() => {
@@ -780,6 +796,20 @@ export const IFCViewer: React.FC = () => {
             borderRadius: '6px',
           }}
         >
+          <button
+            onClick={handleFitToView}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: 'transparent',
+              color: 'white',
+              border: '1px solid rgba(255, 255, 255, 0.4)',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '13px',
+            }}
+          >
+            フィット
+          </button>
           <button
             onClick={() => setIs2DMode(false)}
             style={{
