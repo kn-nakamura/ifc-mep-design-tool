@@ -240,12 +240,13 @@ class IFCParserService:
             vertices: List[List[float]] = []
             min_x = min_y = min_z = float("inf")
             max_x = max_y = max_z = float("-inf")
-            scale = self.length_unit
+            # Note: ifcopenshell.geom.create_shape() already returns coordinates in SI units (meters)
+            # so we do NOT apply self.length_unit here (that would double-convert mm files)
 
             for i in range(0, len(raw_vertices), 3):
-                x = float(raw_vertices[i]) * scale
-                y = float(raw_vertices[i + 1]) * scale
-                z = float(raw_vertices[i + 2]) * scale
+                x = float(raw_vertices[i])
+                y = float(raw_vertices[i + 1])
+                z = float(raw_vertices[i + 2])
                 vertices.append([x, y, z])
                 min_x = min(min_x, x)
                 min_y = min(min_y, y)
@@ -269,7 +270,7 @@ class IFCParserService:
                 max=Point3D(x=max_x, y=max_y, z=max_z),
             )
 
-            logger.info(f"スペース {ifc_space.id()} のジオメトリ取得成功: {len(vertices)} 頂点, {len(indices) if indices else 0} インデックス, bbox: ({min_x:.2f},{min_y:.2f},{min_z:.2f})-({max_x:.2f},{max_y:.2f},{max_z:.2f})")
+            logger.info(f"スペース {ifc_space.id()} のジオメトリ取得成功 (SI単位): {len(vertices)} 頂点, {len(indices) if indices else 0} インデックス, bbox: ({min_x:.2f},{min_y:.2f},{min_z:.2f})-({max_x:.2f},{max_y:.2f},{max_z:.2f}) [m]")
             return Geometry3D(vertices=vertices, indices=indices, boundingBox=bounding_box)
         except Exception as e:
             logger.warning(f"スペース {ifc_space.id()} のジオメトリ取得エラー: {e}")
